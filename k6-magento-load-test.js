@@ -100,6 +100,10 @@ const REST_API_PREFIX = `/rest/${REST_STORE_CODE}/V1`;
 const REST_ENDPOINTS_BROWSE = [`${REST_API_PREFIX}/store/storeViews`];
 const REST_ENDPOINTS_CART = [`${REST_API_PREFIX}/directory/countries`];
 
+// Cache bypass configuration
+const CACHE_BYPASS_PERCENTAGE = 0.01;            // Percentage of requests that bypass cache (1% = 0.01)
+const ENABLE_CACHE_BYPASS = true;                // Enable cache bypass functionality
+
 // =============================================================================
 
 // Import additional metrics
@@ -307,9 +311,14 @@ function restPost(path, body, extraHeaders = {}) {
   });
 }
 
-// The default function is the main loop for each virtual user.
-export default function (data) {
-  const params = {
+// Helper to determine if request should bypass cache
+function shouldBypassCache() {
+  return ENABLE_CACHE_BYPASS && Math.random() < CACHE_BYPASS_PERCENTAGE;
+}
+
+// Helper to get HTTP request parameters with optional cache bypass
+function getHttpParams(bypassCache = false) {
+  const baseParams = {
     headers: {
       'User-Agent': USER_AGENT,
       'Accept-Encoding': 'gzip, deflate, br',
@@ -318,6 +327,21 @@ export default function (data) {
       'Cache-Control': 'no-cache',
     },
   };
+
+  if (bypassCache) {
+    baseParams.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+    baseParams.headers['Pragma'] = 'no-cache';
+    baseParams.headers['Expires'] = '0';
+  }
+
+  return baseParams;
+}
+
+// The default function is the main loop for each virtual user.
+export default function (data) {
+  // Determine if this request should bypass cache
+  const bypassCache = shouldBypassCache();
+  const params = getHttpParams(bypassCache);
 
   // Randomly choose a user journey based on configurable percentages
   const userJourney = Math.random();
