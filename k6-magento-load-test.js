@@ -51,14 +51,14 @@ const CATEGORY_DURATION_THRESHOLD = 50000;    // Max category page response time
 const SEARCH_DURATION_THRESHOLD = 45000;     // Max search response time (45s - heavy load)
 const CART_DURATION_THRESHOLD = 45000;       // Max cart page response time (45s - heavy load)
 
-// User behavior simulation
+// User behavior simulation - Optimized for category/product page hits
 const MIN_THINK_TIME = 1;                    // Minimum think time between actions (seconds)
 const MAX_THINK_TIME = 4;                    // Maximum think time between actions (seconds)
-const BROWSE_JOURNEY_PERCENTAGE = 0.4;       // Percentage of users doing browse & purchase journey (40%)
-const SEARCH_JOURNEY_PERCENTAGE = 0.25;      // Percentage of users doing search & purchase journey (25%)
-const CART_JOURNEY_PERCENTAGE = 0.15;        // Percentage of users doing cart abandonment journey (15%)
-const WINDOW_SHOPPING_PERCENTAGE = 0.15;     // Percentage of users just browsing without buying (15%)
-const QUICK_BUYER_PERCENTAGE = 0.05;         // Percentage of users who buy immediately (5%)
+const BROWSE_JOURNEY_PERCENTAGE = 0.6;       // Percentage of users doing browse & purchase journey (60% - hits category + product)
+const SEARCH_JOURNEY_PERCENTAGE = 0.25;      // Percentage of users doing search & purchase journey (25% - hits product)
+const CART_JOURNEY_PERCENTAGE = 0.1;         // Percentage of users doing cart abandonment journey (10% - hits product)
+const WINDOW_SHOPPING_PERCENTAGE = 0.05;     // Percentage of users just browsing without buying (5% - minimal)
+const QUICK_BUYER_PERCENTAGE = 0.0;          // Percentage of users who buy immediately (0% - disabled)
 
 // HTTP headers
 const USER_AGENT = 'k6-load-test/1.0 (https://k6.io)';
@@ -74,7 +74,7 @@ const EXCLUDED_URL_SUBSTRINGS = ['/admin', '/checkout', '/customer', '/catalogse
 const ENABLE_URL_DISCOVERY = true;           // Enable URL discovery to find real category URLs
 const ENABLE_FALLBACK_URLS = true;           // If discovery finds none, use fallbacks
 const FALLBACK_PRODUCT_COUNT = 50;           // Number of fallback products to synthesize if enabled
-const FALLBACK_CATEGORY_SLUGS = ['category-4', 'category-5', 'category-6', 'category-7', 'category-8', 'category-9', 'category-10', 'category-11', 'category-12', 'category-13'];
+const FALLBACK_CATEGORY_SLUGS = ['category-4', 'category-5', 'category-6', 'category-7', 'category-8', 'category-9', 'category-10', 'category-11', 'category-12', 'category-13', 'category-14', 'category-15', 'category-16', 'category-17', 'category-18', 'category-19', 'category-20'];
 const FALLBACK_SEARCH_TERMS = ['shirt', 'pants', 'shoes', 'bag', 'watch', 'dress', 'jacket', 'hat', 'belt', 'socks'];
 const DEFAULT_SEARCH_TERM = 'shirt';
 
@@ -105,7 +105,7 @@ const REST_ENDPOINTS_BROWSE = [`${REST_API_PREFIX}/store/storeViews`];
 const REST_ENDPOINTS_CART = [`${REST_API_PREFIX}/directory/countries`];
 
 // Cache bypass configuration
-const CACHE_BYPASS_PERCENTAGE = 0.1;            // Percentage of requests that bypass cache (1% = 0.01)
+const CACHE_BYPASS_PERCENTAGE = 0.3;            // Percentage of requests that bypass cache (30% for better New Relic visibility)
 const ENABLE_CACHE_BYPASS = true;                // Enable cache bypass functionality
 
 // =============================================================================
