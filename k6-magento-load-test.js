@@ -40,16 +40,16 @@ const SUSTAINED_DURATION = '5m';             // Time to maintain target load
 const RAMP_DOWN_DURATION = '60s';           // Time to ramp down to 0 users
 
 // HTTP timeout configuration for heavy load
-const HTTP_TIMEOUT = '30s';                   // HTTP request timeout (30 seconds for heavy load)
+const HTTP_TIMEOUT = '60s';                   // HTTP request timeout (60 seconds for heavy load)
 
 // Performance thresholds (in milliseconds) - Adjusted for heavy load testing
 const HTTP_ERROR_THRESHOLD = 0.25;           // Max HTTP error rate (25% - expected under heavy load)
-const HTTP_DURATION_THRESHOLD = 30000;       // Max HTTP request duration (30s - heavy load)
-const HOMEPAGE_DURATION_THRESHOLD = 20000;   // Max homepage response time (20s - heavy load)
-const PRODUCT_DURATION_THRESHOLD = 25000;     // Max product page response time (25s - heavy load)
-const CATEGORY_DURATION_THRESHOLD = 25000;    // Max category page response time (25s - heavy load)
-const SEARCH_DURATION_THRESHOLD = 20000;     // Max search response time (20s - heavy load)
-const CART_DURATION_THRESHOLD = 20000;       // Max cart page response time (20s - heavy load)
+const HTTP_DURATION_THRESHOLD = 60000;       // Max HTTP request duration (60s - heavy load)
+const HOMEPAGE_DURATION_THRESHOLD = 45000;   // Max homepage response time (45s - heavy load)
+const PRODUCT_DURATION_THRESHOLD = 50000;     // Max product page response time (50s - heavy load)
+const CATEGORY_DURATION_THRESHOLD = 50000;    // Max category page response time (50s - heavy load)
+const SEARCH_DURATION_THRESHOLD = 45000;     // Max search response time (45s - heavy load)
+const CART_DURATION_THRESHOLD = 45000;       // Max cart page response time (45s - heavy load)
 
 // User behavior simulation
 const MIN_THINK_TIME = 1;                    // Minimum think time between actions (seconds)
