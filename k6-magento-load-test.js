@@ -33,20 +33,23 @@ import { Trend } from 'k6/metrics';
 // Target website
 const BASE_URL = 'https://4kxkvuyyo22dm.dummycachetest.com';
 
-// Load test parameters - Reduced for stability testing
-const VIRTUAL_USERS = 50;                     // Number of concurrent virtual users (reduced for stability)
-const RAMP_UP_DURATION = '30s';              // Time to ramp up to target users
-const SUSTAINED_DURATION = '2m';             // Time to maintain target load (reduced)
-const RAMP_DOWN_DURATION = '30s';           // Time to ramp down to 0 users
+// Load test parameters - Heavy load testing
+const VIRTUAL_USERS = 500;                     // Number of concurrent virtual users (heavy load)
+const RAMP_UP_DURATION = '60s';              // Time to ramp up to target users
+const SUSTAINED_DURATION = '5m';             // Time to maintain target load
+const RAMP_DOWN_DURATION = '60s';           // Time to ramp down to 0 users
 
-// Performance thresholds (in milliseconds) - Relaxed for troubleshooting
-const HTTP_ERROR_THRESHOLD = 0.15;           // Max HTTP error rate (15% - relaxed for troubleshooting)
-const HTTP_DURATION_THRESHOLD = 10000;       // Max HTTP request duration (10s - relaxed)
-const HOMEPAGE_DURATION_THRESHOLD = 10000;   // Max homepage response time (10s - relaxed)
-const PRODUCT_DURATION_THRESHOLD = 15000;     // Max product page response time (15s - relaxed)
-const CATEGORY_DURATION_THRESHOLD = 15000;    // Max category page response time (15s - relaxed)
-const SEARCH_DURATION_THRESHOLD = 10000;     // Max search response time (10s - relaxed)
-const CART_DURATION_THRESHOLD = 10000;       // Max cart page response time (10s - relaxed)
+// HTTP timeout configuration for heavy load
+const HTTP_TIMEOUT = '30s';                   // HTTP request timeout (30 seconds for heavy load)
+
+// Performance thresholds (in milliseconds) - Adjusted for heavy load testing
+const HTTP_ERROR_THRESHOLD = 0.25;           // Max HTTP error rate (25% - expected under heavy load)
+const HTTP_DURATION_THRESHOLD = 30000;       // Max HTTP request duration (30s - heavy load)
+const HOMEPAGE_DURATION_THRESHOLD = 20000;   // Max homepage response time (20s - heavy load)
+const PRODUCT_DURATION_THRESHOLD = 25000;     // Max product page response time (25s - heavy load)
+const CATEGORY_DURATION_THRESHOLD = 25000;    // Max category page response time (25s - heavy load)
+const SEARCH_DURATION_THRESHOLD = 20000;     // Max search response time (20s - heavy load)
+const CART_DURATION_THRESHOLD = 20000;       // Max cart page response time (20s - heavy load)
 
 // User behavior simulation
 const MIN_THINK_TIME = 1;                    // Minimum think time between actions (seconds)
@@ -101,7 +104,7 @@ const REST_ENDPOINTS_BROWSE = [`${REST_API_PREFIX}/store/storeViews`];
 const REST_ENDPOINTS_CART = [`${REST_API_PREFIX}/directory/countries`];
 
 // Cache bypass configuration
-const CACHE_BYPASS_PERCENTAGE = 0.01;            // Percentage of requests that bypass cache (1% = 0.01)
+const CACHE_BYPASS_PERCENTAGE = 0.1;            // Percentage of requests that bypass cache (1% = 0.01)
 const ENABLE_CACHE_BYPASS = true;                // Enable cache bypass functionality
 
 // =============================================================================
@@ -243,12 +246,21 @@ export function setup() {
 
 // Helper function to extract CSRF token from HTML
 function extractFormKey(html) {
+  if (!html || typeof html !== 'string') {
+    return null;
+  }
   const formKeyMatch = html.match(/name="form_key"[^>]*value="([^"]+)"/);
   return formKeyMatch ? formKeyMatch[1] : null;
 }
 
 // Helper function to extract product ID and whether options are required
 function extractProductInfo(html) {
+  if (!html || typeof html !== 'string') {
+    return {
+      productId: null,
+      requiresOptions: false,
+    };
+  }
   const idMatch = html.match(/product_id['"]\s*:\s*['"]?(\d+)['"]?/);
   const requiresOptions = /super_attribute|configurable|bundle-options|swatch-opt/.test(html);
   return {
@@ -319,6 +331,7 @@ function shouldBypassCache() {
 // Helper to get HTTP request parameters with optional cache bypass
 function getHttpParams(bypassCache = false) {
   const baseParams = {
+    timeout: HTTP_TIMEOUT,
     headers: {
       'User-Agent': USER_AGENT,
       'Accept-Encoding': 'gzip, deflate, br',
