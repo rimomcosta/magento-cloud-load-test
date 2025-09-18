@@ -71,10 +71,10 @@ const MAX_SEARCH_TERMS = 20;                 // Max search terms to use
 
 // URL discovery behavior
 const EXCLUDED_URL_SUBSTRINGS = ['/admin', '/checkout', '/customer', '/catalogsearch', '/contact', '/privacy', '/terms'];
-const ENABLE_URL_DISCOVERY = false;          // Skip URL discovery for heavy load (use fallbacks only)
+const ENABLE_URL_DISCOVERY = true;           // Enable URL discovery to find real category URLs
 const ENABLE_FALLBACK_URLS = true;           // If discovery finds none, use fallbacks
 const FALLBACK_PRODUCT_COUNT = 50;           // Number of fallback products to synthesize if enabled
-const FALLBACK_CATEGORY_SLUGS = ['women', 'men', 'gear', 'training', 'electronics', 'bags', 'watches', 'fitness-equipment', 'books', 'video'];
+const FALLBACK_CATEGORY_SLUGS = ['category-4', 'category-5', 'category-6', 'category-7', 'category-8', 'category-9', 'category-10', 'category-11', 'category-12', 'category-13'];
 const FALLBACK_SEARCH_TERMS = ['shirt', 'pants', 'shoes', 'bag', 'watch', 'dress', 'jacket', 'hat', 'belt', 'socks'];
 const DEFAULT_SEARCH_TERM = 'shirt';
 
