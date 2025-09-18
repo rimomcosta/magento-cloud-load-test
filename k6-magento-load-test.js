@@ -71,6 +71,7 @@ const MAX_SEARCH_TERMS = 20;                 // Max search terms to use
 
 // URL discovery behavior
 const EXCLUDED_URL_SUBSTRINGS = ['/admin', '/checkout', '/customer', '/catalogsearch', '/contact', '/privacy', '/terms'];
+const ENABLE_URL_DISCOVERY = false;          // Skip URL discovery for heavy load (use fallbacks only)
 const ENABLE_FALLBACK_URLS = true;           // If discovery finds none, use fallbacks
 const FALLBACK_PRODUCT_COUNT = 50;           // Number of fallback products to synthesize if enabled
 const FALLBACK_CATEGORY_SLUGS = ['women', 'men', 'gear', 'training', 'electronics', 'bags', 'watches', 'fitness-equipment', 'books', 'video'];
@@ -126,6 +127,7 @@ const restTrend = new Trend('rest_duration', true);
 // (Optional metrics removed for now to keep script lean)
 
 export const options = {
+  setupTimeout: '30s', // Shorter setup timeout - don't wait too long
   stages: [
     { duration: RAMP_UP_DURATION, target: VIRTUAL_USERS }, // Ramp-up phase
     { duration: SUSTAINED_DURATION, target: VIRTUAL_USERS }, // Sustained load phase
@@ -155,88 +157,90 @@ export const options = {
 // The setup function runs once before the test starts.
 // It discovers real URLs from your Magento site with Medium profile data.
 export function setup() {
+  if (!ENABLE_URL_DISCOVERY) {
+    console.log('Running setup... URL discovery disabled, using fallback URLs only.');
+    return generateFallbackUrls();
+  }
+  
   console.log('Running setup... Discovering real URLs from your Magento site.');
-  const params = { headers: { 'User-Agent': USER_AGENT } };
-  const res = http.get(BASE_URL, params);
-
-  check(res, { 'Homepage loaded successfully': (r) => r.status === 200 });
+  
+  const params = { 
+    headers: { 'User-Agent': USER_AGENT },
+    timeout: '10s' // Short timeout for setup
+  };
+  
+  let res;
+  try {
+    res = http.get(BASE_URL, params);
+    check(res, { 'Homepage loaded successfully': (r) => r.status >= 200 && r.status < 400 });
+  } catch (error) {
+    console.log('Setup: Homepage request failed or timed out, using fallback URLs only');
+    res = null;
+  }
 
   const productUrls = [];
   const categoryUrls = [];
   const searchTerms = [];
 
-  try {
-    const doc = res.html();
-    
-    // Extract real product URLs from homepage (support absolute and relative hrefs)
-    doc.find('a[href*=".html"]').each((i, el) => {
-      try {
-        let href = el.attr('href');
-        if (!href) return;
-        // Normalize relative URLs to absolute
-        if (href.startsWith('/')) {
-          href = `${BASE_URL}${href}`;
-        }
-        if (href.includes('.html') && href.startsWith(BASE_URL)) {
-          // Skip admin, checkout, and other non-catalog URLs
-          if (!EXCLUDED_URL_SUBSTRINGS.some(s => href.includes(s))) {
-            
-            // Categorize URLs based on common Magento patterns
-            if (href.includes('/category') || href.includes('/women') || href.includes('/men') || 
-                href.includes('/gear') || href.includes('/training') || href.includes('/electronics')) {
-              if (categoryUrls.indexOf(href) === -1) categoryUrls.push(href);
-            } else {
-              if (productUrls.indexOf(href) === -1) productUrls.push(href);
+  if (res && res.body) {
+    try {
+      const doc = res.html();
+      
+      // Extract real product URLs from homepage (support absolute and relative hrefs)
+      doc.find('a[href*=".html"]').each((i, el) => {
+        try {
+          let href = el.attr('href');
+          if (!href) return;
+          // Normalize relative URLs to absolute
+          if (href.startsWith('/')) {
+            href = `${BASE_URL}${href}`;
+          }
+          if (href.includes('.html') && href.startsWith(BASE_URL)) {
+            // Skip admin, checkout, and other non-catalog URLs
+            if (!EXCLUDED_URL_SUBSTRINGS.some(s => href.includes(s))) {
+              
+              // Categorize URLs based on common Magento patterns
+              if (href.includes('/category') || href.includes('/women') || href.includes('/men') || 
+                  href.includes('/gear') || href.includes('/training') || href.includes('/electronics')) {
+                if (categoryUrls.indexOf(href) === -1) categoryUrls.push(href);
+              } else {
+                if (productUrls.indexOf(href) === -1) productUrls.push(href);
+              }
             }
           }
+        } catch (e) {
+          // Skip problematic elements
         }
-      } catch (e) {
-        // Skip problematic elements
-      }
-    });
+      });
 
-    // Extract search terms from product names and categories
-    doc.find('a[href*=".html"]').each((i, el) => {
-      try {
-        const text = el.text().trim();
-        if (text && text.length > 2 && text.length < 20 && !text.includes('http')) {
-          if (searchTerms.indexOf(text.toLowerCase()) === -1) {
-            searchTerms.push(text.toLowerCase());
+      // Extract search terms from product names and categories
+      doc.find('a[href*=".html"]').each((i, el) => {
+        try {
+          const text = el.text().trim();
+          if (text && text.length > 2 && text.length < 20 && !text.includes('http')) {
+            if (searchTerms.indexOf(text.toLowerCase()) === -1) {
+              searchTerms.push(text.toLowerCase());
+            }
           }
+        } catch (e) {
+          // Skip problematic elements
         }
-      } catch (e) {
-        // Skip problematic elements
-      }
-    });
+      });
 
-  } catch (e) {
-    console.log('HTML parsing failed, using fallback URLs');
+    } catch (e) {
+      console.log('HTML parsing failed, using fallback URLs');
+    }
+  } else {
+    console.log('No homepage response received, using fallback URLs only');
   }
 
-  // Fallback URLs based on Medium profile data structure
-  if (ENABLE_FALLBACK_URLS) {
-    if (productUrls.length === 0) {
-      console.log('No product URLs found, using fallback URLs for Medium profile');
-      for (let i = 1; i <= FALLBACK_PRODUCT_COUNT; i++) {
-        productUrls.push(`${BASE_URL}/simple-product-${i}.html`);
-        productUrls.push(`${BASE_URL}/configurable-product-${i}.html`);
-      }
-    }
-    if (categoryUrls.length === 0) {
-      console.log('No category URLs found, using fallback URLs for Medium profile');
-      for (const slug of FALLBACK_CATEGORY_SLUGS) {
-        categoryUrls.push(`${BASE_URL}/${slug}.html`);
-      }
-    }
-    if (searchTerms.length === 0) {
-      console.log('No search terms found, using fallback terms');
-      for (const t of FALLBACK_SEARCH_TERMS) searchTerms.push(t);
-    }
+  // Use fallback URLs if discovery failed or found nothing
+  if (ENABLE_FALLBACK_URLS && (productUrls.length === 0 || categoryUrls.length === 0 || searchTerms.length === 0)) {
+    console.log('Using fallback URLs due to failed discovery or empty results');
+    return generateFallbackUrls();
   }
 
   console.log(`Setup complete. Found ${productUrls.length} product URLs, ${categoryUrls.length} category URLs, and ${searchTerms.length} search terms.`);
-  // Apply configurable limits (0 means unlimited)
-  const limit = (arr, max) => (max && max > 0 ? arr.slice(0, max) : arr);
   return { 
     products: limit(productUrls, MAX_PRODUCTS),
     categories: limit(categoryUrls, MAX_CATEGORIES),
@@ -321,6 +325,37 @@ function restPost(path, body, extraHeaders = {}) {
       ...extraHeaders,
     },
   });
+}
+
+// Helper to limit array size
+function limit(arr, max) {
+  return max > 0 ? arr.slice(0, max) : arr;
+}
+
+// Helper to generate fallback URLs
+function generateFallbackUrls() {
+  const productUrls = [];
+  const categoryUrls = [];
+  const searchTerms = [...FALLBACK_SEARCH_TERMS];
+  
+  // Generate fallback product URLs
+  for (let i = 1; i <= FALLBACK_PRODUCT_COUNT; i++) {
+    productUrls.push(`${BASE_URL}/simple-product-${i}.html`);
+    productUrls.push(`${BASE_URL}/configurable-product-${i}.html`);
+  }
+  
+  // Generate fallback category URLs
+  FALLBACK_CATEGORY_SLUGS.forEach(slug => {
+    categoryUrls.push(`${BASE_URL}/${slug}.html`);
+  });
+  
+  console.log(`Fallback URLs generated: ${productUrls.length} products, ${categoryUrls.length} categories, ${searchTerms.length} search terms`);
+  
+  return { 
+    products: limit(productUrls, MAX_PRODUCTS),
+    categories: limit(categoryUrls, MAX_CATEGORIES),
+    searchTerms: limit(searchTerms, MAX_SEARCH_TERMS)
+  };
 }
 
 // Helper to determine if request should bypass cache
