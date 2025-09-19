@@ -409,8 +409,8 @@ function crawlPage(url, depth = 0) {
 
 export function setup() {
   if (!ENABLE_URL_DISCOVERY) {
-    console.log('Running setup... URL discovery disabled.');
-    return { products: [], categories: [], searchTerms: FALLBACK_SEARCH_TERMS };
+    console.log('Running setup... URL discovery disabled, using verified fallback URLs only.');
+    return generateFallbackUrls();
   }
 
   console.log('Running setup... Discovering real URLs from your Magento site with enhanced crawling.');
@@ -876,8 +876,8 @@ class RealUserSession {
     // Prioritize categories and products for catalog traffic
     const catalogPriority = Math.random();
     
-    // 70% chance to explore categories (increased for more catalog/category/view)
-    if (catalogPriority < 0.7 && this.discoveredCategories.length > 0) {
+    // 85% chance to explore categories (heavily increased for more catalog/category/view)
+    if (catalogPriority < 0.85 && this.discoveredCategories.length > 0) {
       // Prefer categories matching interests
       const interestedCategories = this.discoveredCategories.filter(cat =>
         this.interests.some(interest => cat.toLowerCase().includes(interest))
@@ -894,7 +894,7 @@ class RealUserSession {
       return { url: categoryUrl, type: 'category' };
     }
     
-    // 30% chance to explore products (but still significant for catalog/product/view)
+    // 15% chance to explore products (but still significant for catalog/product/view)
     if (this.discoveredProducts.length > 0) {
       const productUrl = this.discoveredProducts[Math.floor(Math.random() * this.discoveredProducts.length)];
       return { url: productUrl, type: 'product' };
@@ -968,13 +968,13 @@ function realUserBrowsingSession(user, fallbackData) {
       // Get next URL based on realistic user behavior patterns
       let nextNavigation = user.getNextUrl();
       
-      // Fallback to predefined URLs if nothing discovered yet - prioritize categories and products
+      // Fallback to predefined URLs - heavily prioritize categories over products
       if (!nextNavigation) {
-        // Strongly favor categories and products over other content
-        if (fallbackData.categories && fallbackData.categories.length > 0 && Math.random() < 0.8) {
+        // 90% chance to use categories for maximum catalog/category/view traffic
+        if (fallbackData.categories && fallbackData.categories.length > 0 && Math.random() < 0.9) {
           const categoryUrl = fallbackData.categories[Math.floor(Math.random() * fallbackData.categories.length)];
           nextNavigation = { url: categoryUrl, type: 'category' };
-        } else if (fallbackData.products && fallbackData.products.length > 0 && Math.random() < 0.9) {
+        } else if (fallbackData.products && fallbackData.products.length > 0) {
           const productUrl = fallbackData.products[Math.floor(Math.random() * fallbackData.products.length)];
           nextNavigation = { url: productUrl, type: 'product' };
         }

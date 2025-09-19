@@ -37,29 +37,29 @@ ecommerceFlow:
   addToCartMaxQty: 3
 
 browsingPatterns:
-  maxBrowsingActions: 12
-  minBrowsingActions: 5
-  relatedProductFollowRate: 0.6
-  paginationFollowRate: 0.4
-  breadcrumbFollowRate: 0.3
-  interestMatchFollowRate: 0.8
-  randomExplorationRate: 0.5
-  distractionRate: 0.15
-  comparisonShoppingRate: 0.4
-  impulseBuyingRate: 0.25
+  maxBrowsingActions: 15
+  minBrowsingActions: 8
+  relatedProductFollowRate: 0.7
+  paginationFollowRate: 0.6
+  breadcrumbFollowRate: 0.4
+  interestMatchFollowRate: 0.9
+  randomExplorationRate: 0.7
+  distractionRate: 0.1
+  comparisonShoppingRate: 0.6
+  impulseBuyingRate: 0.3
 
 api:
-  enableApiLoad: true
-  enableGraphqlLoad: true
-  enableRestLoad: true
-  apiTrafficPercentage: 0.1
+  enableApiLoad: false
+  enableGraphqlLoad: false
+  enableRestLoad: false
+  apiTrafficPercentage: 0.0
 
 cache:
   cacheBypassPercentage: 0.3
   enableCacheBypass: true
 
 urlDiscovery:
-  enableUrlDiscovery: true
+  enableUrlDiscovery: false
   enableFallbackUrls: true
   enableDeepCrawling: false
   maxCrawlDepth: 1
@@ -71,9 +71,18 @@ urlDiscovery:
 realUrls:
   fallbackCategorySlugs:
     - "category-4"
-    - "category-5" 
+    - "category-5"
+    - "category-4/category-4-1"
+    - "category-4/category-4-2" 
+    - "category-4/category-4-3"
+    - "category-5/category-5-1"
+    - "category-5/category-5-2"
     - "gear"
+    - "gear/bags"
+    - "gear/fitness-equipment"
+    - "gear/watches"
     - "training"
+    - "training/training-video"
     - "collections/yoga-new"
   realProductUrls:
     - "radiant-tee.html"

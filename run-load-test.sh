@@ -270,17 +270,17 @@ browsingPatterns:
   impulseBuyingRate: 0.25
 
 api:
-  enableApiLoad: true
-  enableGraphqlLoad: true
-  enableRestLoad: true
-  apiTrafficPercentage: 0.1
+  enableApiLoad: false
+  enableGraphqlLoad: false
+  enableRestLoad: false
+  apiTrafficPercentage: 0.0
 
 cache:
   cacheBypassPercentage: 0.3
   enableCacheBypass: true
 
 urlDiscovery:
-  enableUrlDiscovery: true
+  enableUrlDiscovery: false
   enableFallbackUrls: true
   enableDeepCrawling: false
   maxCrawlDepth: 1
@@ -292,9 +292,18 @@ urlDiscovery:
 realUrls:
   fallbackCategorySlugs:
     - "category-4"
-    - "category-5" 
+    - "category-5"
+    - "category-4/category-4-1"
+    - "category-4/category-4-2" 
+    - "category-4/category-4-3"
+    - "category-5/category-5-1"
+    - "category-5/category-5-2"
     - "gear"
+    - "gear/bags"
+    - "gear/fitness-equipment"
+    - "gear/watches"
     - "training"
+    - "training/training-video"
     - "collections/yoga-new"
   realProductUrls:
     - "radiant-tee.html"
