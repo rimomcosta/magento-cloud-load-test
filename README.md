@@ -21,9 +21,38 @@ chmod +x run-load-test.sh
 The script will:
 - ✅ Automatically detect your OS (macOS/Linux)
 - ✅ Install k6 if not present (with your permission)
-- ✅ Update the load test script with your website URL
-- ✅ Run a comprehensive load test
+- ✅ Load configuration from `load-test-config.yaml` (if present)
+- ✅ Run comprehensive e-commerce user journeys
 - ✅ Provide detailed performance metrics
+
+### Configuration System
+
+Create `load-test-config.yaml` to customize any aspect of the load test with explanatory comments:
+
+```yaml
+# Load test parameters
+loadTest:
+  # Number of concurrent virtual users (simulated customers)
+  # Light: 10-50, Medium: 100-200, Heavy: 300-500
+  virtualUsers: 100
+  
+  # Time to maintain peak load (main testing period)
+  sustainedDuration: "3m"
+
+# User behavior simulation
+userBehavior:
+  # User journey distribution (must sum to 1.0 or less)
+  comprehensiveShoppingPercentage: 0.3  # Multi-category browsers
+  browseJourneyPercentage: 0.4          # Traditional shoppers
+
+# E-commerce flow configuration
+ecommerceFlow:
+  # Maximum categories a user will browse in one session
+  maxCategoriesPerSession: 2
+  
+  # Percentage of users who complete checkout (0.0-1.0)
+  checkoutCompletionRate: 0.8
+```
 
 ## 📋 Prerequisites
 
@@ -120,6 +149,44 @@ const API_TRAFFIC_PERCENTAGE = 0.3;            // API traffic (30%)
 - **Custom Trends**: Specific page performance (homepage, product, category, etc.)
 - **Iterations**: Number of complete user journeys
 - **Virtual Users**: Concurrent user simulation
+
+### Enhanced User Journeys
+
+**1. Comprehensive Shopping Journey (20%)**
+```
+Homepage → Category A → Products 1-3 → Category B → Products 4-6 → 
+Return to Category A → Compare → Add to Cart → Cart → Checkout
+```
+- Browse 2-3 categories per session
+- View 1-4 products per category  
+- Return to previous categories for comparison
+- Add multiple products to cart (up to 5 items)
+- 70% checkout completion rate
+
+**2. Browse & Purchase Journey (40%)**
+```
+Homepage → Category → Product → Add to Cart → Cart
+```
+
+**3. Search & Purchase Journey (20%)**
+```
+Homepage → Search → Product → Add to Cart
+```
+
+**4. Cart Abandonment Journey (10%)**
+```
+Homepage → Product → Add to Cart → Cart → Checkout → Abandon
+```
+
+**5. Window Shopping Journey (5%)**
+```
+Homepage → Browse Categories → View Products (no purchase)
+```
+
+**6. Quick Buyer Journey (5%)**
+```
+Homepage → Product → Add to Cart → Cart → Checkout (fast)
+```
 
 ### Threshold Monitoring
 The test monitors these performance criteria:

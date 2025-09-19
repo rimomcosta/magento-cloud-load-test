@@ -15,8 +15,9 @@
  * 
  * CONFIGURATION:
  *   - Default configuration is embedded in the script
- *   - Override any setting by creating 'load-test-config.json' in the same directory
- *   - All test parameters can be customized via the config file
+ *   - Override any setting by creating 'load-test-config.yaml' in the same directory
+ *   - All test parameters can be customized via the YAML config file
+ *   - YAML format supports explanatory comments for each setting
  * 
  * USER JOURNEYS:
  *   1. Comprehensive Shopping: Multi-category browsing with product comparison
@@ -31,12 +32,92 @@ import http from 'k6/http';
 import { check, sleep, group } from 'k6';
 import { Trend } from 'k6/metrics';
 
-// Load configuration from file if available
+// Load configuration from YAML file if available
 let config = {};
 try {
-  const configFile = open('./load-test-config.json');
-  config = JSON.parse(configFile);
-  console.log('✅ Loaded configuration from load-test-config.json');
+  const configFile = open('./load-test-config.yaml');
+  // Simple YAML parser for our specific format
+  const lines = configFile.split('\n');
+  const result = {};
+  let currentSection = result;
+  let sectionStack = [result];
+  let sectionNames = [''];
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue; // Skip comments and empty lines
+    
+    const indent = line.length - line.trimStart().length;
+    const colonIndex = trimmed.indexOf(':');
+    
+    if (colonIndex > 0) {
+      const key = trimmed.substring(0, colonIndex).trim();
+      const value = trimmed.substring(colonIndex + 1).trim();
+      
+      // Adjust section stack based on indentation
+      const depth = Math.floor(indent / 2);
+      while (sectionStack.length > depth + 1) {
+        sectionStack.pop();
+        sectionNames.pop();
+      }
+      currentSection = sectionStack[sectionStack.length - 1];
+      
+      if (value === '' || value === '[]') {
+        // This is a section header or array start
+        currentSection[key] = value === '[]' ? [] : {};
+        sectionStack.push(currentSection[key]);
+        sectionNames.push(key);
+        currentSection = currentSection[key];
+      } else if (value === '' && lines[lines.indexOf(line) + 1] && lines[lines.indexOf(line) + 1].trim().startsWith('- ')) {
+        // This is an array header (next line starts with -)
+        currentSection[key] = [];
+        sectionStack.push(currentSection[key]);
+        sectionNames.push(key);
+        currentSection = currentSection[key];
+      } else if (trimmed.startsWith('- ')) {
+        // This is an array item
+        const arrayValue = value.startsWith('"') ? value.slice(1, -1) : value;
+        if (!Array.isArray(currentSection)) {
+          const parentKey = sectionNames[sectionNames.length - 1];
+          const parent = sectionStack[sectionStack.length - 2];
+          parent[parentKey] = [];
+          currentSection = parent[parentKey];
+          sectionStack[sectionStack.length - 1] = currentSection;
+        }
+        currentSection.push(arrayValue);
+      } else {
+        // This is a key-value pair
+        let parsedValue = value;
+        
+        // Remove inline comments (everything after #)
+        const commentIndex = value.indexOf('#');
+        if (commentIndex > 0) {
+          parsedValue = value.substring(0, commentIndex).trim();
+        }
+        
+        if (parsedValue.startsWith('"') && parsedValue.endsWith('"')) {
+          parsedValue = parsedValue.slice(1, -1); // Remove quotes
+        } else if (parsedValue === 'true') {
+          parsedValue = true;
+        } else if (parsedValue === 'false') {
+          parsedValue = false;
+        } else if (!isNaN(parsedValue) && !isNaN(parseFloat(parsedValue))) {
+          parsedValue = parseFloat(parsedValue);
+        }
+        currentSection[key] = parsedValue;
+      }
+    } else if (trimmed.startsWith('- ')) {
+      // Array item at root level or continuing array
+      const arrayValue = trimmed.substring(2).trim();
+      const cleanValue = arrayValue.startsWith('"') ? arrayValue.slice(1, -1) : arrayValue;
+      if (Array.isArray(currentSection)) {
+        currentSection.push(cleanValue);
+      }
+    }
+  }
+  
+  config = result;
+  console.log('✅ Loaded configuration from load-test-config.yaml');
 } catch (e) {
   console.log('ℹ️  No config file found, using default configuration');
 }
@@ -128,21 +209,29 @@ const ENABLE_DEEP_CRAWLING = getConfig('urlDiscovery.enableDeepCrawling', false)
 const MAX_CRAWL_DEPTH = getConfig('urlDiscovery.maxCrawlDepth', 1);
 const VALIDATE_URLS_BEFORE_USE = getConfig('urlDiscovery.validateUrlsBeforeUse', false);
 
-// Real URLs from configuration
-const FALLBACK_CATEGORY_SLUGS = getConfig('realUrls.fallbackCategorySlugs', ['category-4', 'category-5', 'gear', 'training', 'collections/yoga-new']);
-const REAL_PRODUCT_URLS = getConfig('realUrls.realProductUrls', [
-  'radiant-tee.html',
-  'breathe-easy-tank.html',
-  'argus-all-weather-tank.html',
-  'hero-hoodie.html',
-  'fusion-backpack.html',
-  'push-it-messenger-bag.html',
-  'sprite-yoga-companion-kit.html',
-  'affirm-water-bottle.html',
-  'quest-lumaflex-tone-band.html',
-  'fitbit-charge-3.html'
-]);
-const FALLBACK_SEARCH_TERMS = getConfig('realUrls.fallbackSearchTerms', ['shirt', 'pants', 'shoes', 'bag', 'watch', 'dress', 'jacket', 'hat', 'belt', 'socks']);
+// Real URLs from configuration (with proper array handling)
+const FALLBACK_CATEGORY_SLUGS = Array.isArray(getConfig('realUrls.fallbackCategorySlugs', null)) 
+  ? getConfig('realUrls.fallbackCategorySlugs', null)
+  : ['category-4', 'category-5', 'gear', 'training', 'collections/yoga-new'];
+
+const REAL_PRODUCT_URLS = Array.isArray(getConfig('realUrls.realProductUrls', null))
+  ? getConfig('realUrls.realProductUrls', null)
+  : [
+    'radiant-tee.html',
+    'breathe-easy-tank.html',
+    'argus-all-weather-tank.html',
+    'hero-hoodie.html',
+    'fusion-backpack.html',
+    'push-it-messenger-bag.html',
+    'sprite-yoga-companion-kit.html',
+    'affirm-water-bottle.html',
+    'quest-lumaflex-tone-band.html',
+    'fitbit-charge-3.html'
+  ];
+
+const FALLBACK_SEARCH_TERMS = Array.isArray(getConfig('realUrls.fallbackSearchTerms', null))
+  ? getConfig('realUrls.fallbackSearchTerms', null)
+  : ['shirt', 'pants', 'shoes', 'bag', 'watch', 'dress', 'jacket', 'hat', 'belt', 'socks'];
 const DEFAULT_SEARCH_TERM = 'shirt';
 
 // Storefront paths
@@ -168,6 +257,18 @@ const REST_ENDPOINTS_CART = [`${REST_API_PREFIX}/directory/countries`];
 // Cache bypass configuration
 const CACHE_BYPASS_PERCENTAGE = getConfig('cache.cacheBypassPercentage', 0.3);
 const ENABLE_CACHE_BYPASS = getConfig('cache.enableCacheBypass', true);
+
+// Realistic browsing patterns configuration
+const MAX_BROWSING_ACTIONS = getConfig('browsingPatterns.maxBrowsingActions', 12);
+const MIN_BROWSING_ACTIONS = getConfig('browsingPatterns.minBrowsingActions', 5);
+const RELATED_PRODUCT_FOLLOW_RATE = getConfig('browsingPatterns.relatedProductFollowRate', 0.4);
+const PAGINATION_FOLLOW_RATE = getConfig('browsingPatterns.paginationFollowRate', 0.25);
+const BREADCRUMB_FOLLOW_RATE = getConfig('browsingPatterns.breadcrumbFollowRate', 0.2);
+const INTEREST_MATCH_FOLLOW_RATE = getConfig('browsingPatterns.interestMatchFollowRate', 0.7);
+const RANDOM_EXPLORATION_RATE = getConfig('browsingPatterns.randomExplorationRate', 0.3);
+const DISTRACTION_RATE = getConfig('browsingPatterns.distractionRate', 0.15);
+const COMPARISON_SHOPPING_RATE = getConfig('browsingPatterns.comparisonShoppingRate', 0.4);
+const IMPULSE_BUYING_RATE = getConfig('browsingPatterns.impulseBuyingRate', 0.25);
 
 // =============================================================================
 
@@ -448,17 +549,26 @@ function limit(arr, max) {
 function generateFallbackUrls() {
   const productUrls = [];
   const categoryUrls = [];
-  const searchTerms = [...FALLBACK_SEARCH_TERMS];
+  const searchTerms = [];
+  
+  // Ensure arrays are properly handled
+  const realProducts = Array.isArray(REAL_PRODUCT_URLS) ? REAL_PRODUCT_URLS : [];
+  const realCategories = Array.isArray(FALLBACK_CATEGORY_SLUGS) ? FALLBACK_CATEGORY_SLUGS : [];
+  const realSearchTerms = Array.isArray(FALLBACK_SEARCH_TERMS) ? FALLBACK_SEARCH_TERMS : [];
+  
   
   // Use real product URLs from your site
-  REAL_PRODUCT_URLS.forEach(product => {
+  realProducts.forEach(product => {
     productUrls.push(`${BASE_URL}/${product}`);
   });
   
   // Generate fallback category URLs with real categories
-  FALLBACK_CATEGORY_SLUGS.forEach(slug => {
+  realCategories.forEach(slug => {
     categoryUrls.push(`${BASE_URL}/${slug}.html`);
   });
+  
+  // Add search terms
+  searchTerms.push(...realSearchTerms);
   
   console.log(`Fallback URLs generated: ${productUrls.length} products, ${categoryUrls.length} categories, ${searchTerms.length} search terms`);
   
@@ -496,572 +606,532 @@ function getHttpParams(bypassCache = false) {
   return baseParams;
 }
 
+// Real User Session - maintains state and discovered links throughout the session
+class RealUserSession {
+  constructor(params) {
+    this.params = params;
+    this.discoveredCategories = [];
+    this.discoveredProducts = [];
+    this.discoveredRelatedProducts = []; // Products found via "related" links
+    this.discoveredPagination = []; // Pagination URLs
+    this.discoveredBreadcrumbs = []; // Navigation breadcrumbs
+    this.visitedPages = [];
+    this.navigationPath = []; // Track user's navigation journey
+    this.cart = [];
+    this.interests = this.generateUserInterests();
+    this.shoppingIntent = Math.random(); // 0-1, higher = more likely to buy
+    this.sessionStartTime = Date.now();
+    this.formKey = null;
+    this.sessionCookies = null;
+    this.currentContext = 'homepage'; // Track where user is in their journey
+  }
+
+  // Generate realistic user interests/preferences
+  generateUserInterests() {
+    const allInterests = ['clothing', 'gear', 'fitness', 'electronics', 'accessories', 'training', 'yoga'];
+    const numInterests = Math.floor(Math.random() * 3) + 1; // 1-3 interests
+    const interests = [];
+    for (let i = 0; i < numInterests; i++) {
+      const interest = allInterests[Math.floor(Math.random() * allInterests.length)];
+      if (!interests.includes(interest)) interests.push(interest);
+    }
+    return interests;
+  }
+
+  // Extract links from a page response with realistic browsing patterns
+  extractLinksFromPage(res) {
+    if (!res.body) return { categories: [], products: [], pagination: [], related: [], breadcrumbs: [] };
+    
+    const categories = [];
+    const products = [];
+    const pagination = [];
+    const related = [];
+    const breadcrumbs = [];
+    
+    try {
+      const doc = res.html();
+      
+      // Extract navigation breadcrumbs (realistic user behavior)
+      doc.find('.breadcrumbs a, .breadcrumb a, nav a').each((i, el) => {
+        try {
+          let href = el.attr('href');
+          if (href && href.startsWith('/') && !breadcrumbs.includes(`${BASE_URL}${href}`)) {
+            breadcrumbs.push(`${BASE_URL}${href}`);
+          }
+        } catch (e) {}
+      });
+      
+      // Extract pagination links (users browse through pages)
+      doc.find('a[href*="p="], a[href*="page="], .pages a, .pager a').each((i, el) => {
+        try {
+          let href = el.attr('href');
+          if (href) {
+            if (href.startsWith('/')) href = `${BASE_URL}${href}`;
+            if (href.startsWith(BASE_URL) && !pagination.includes(href)) {
+              pagination.push(href);
+            }
+          }
+        } catch (e) {}
+      });
+      
+      // Extract related/recommended products (realistic discovery)
+      doc.find('.related-products a, .upsell-products a, .crosssell a, [class*="related"] a, [class*="recommend"] a').each((i, el) => {
+        try {
+          let href = el.attr('href');
+          if (href && href.includes('.html')) {
+            if (href.startsWith('/')) href = `${BASE_URL}${href}`;
+            if (href.startsWith(BASE_URL) && !related.includes(href)) {
+              related.push(href);
+            }
+          }
+        } catch (e) {}
+      });
+      
+      // Extract all product and category links
+      doc.find('a[href*=".html"]').each((i, el) => {
+        try {
+          let href = el.attr('href');
+          if (!href) return;
+          
+          // Normalize relative URLs
+          if (href.startsWith('/')) {
+            href = `${BASE_URL}${href}`;
+          }
+          
+          if (href.includes('.html') && href.startsWith(BASE_URL)) {
+            // Skip excluded URLs
+            if (EXCLUDED_URL_SUBSTRINGS.some(s => href.includes(s))) return;
+            
+            // Check if this matches user interests
+            const linkText = el.text().toLowerCase();
+            const linkClass = el.attr('class') || '';
+            const parentClass = el.parent().attr('class') || '';
+            
+            const isInteresting = this.interests.some(interest => 
+              href.toLowerCase().includes(interest) || 
+              linkText.includes(interest) ||
+              linkClass.includes(interest) ||
+              parentClass.includes(interest)
+            );
+            
+            // Enhanced categorization with realistic user behavior
+            if (href.includes('/category') || href.includes('/gear') || href.includes('/training') ||
+                href.includes('/women') || href.includes('/men') || href.includes('/collections') ||
+                linkClass.includes('category') || parentClass.includes('category')) {
+              if (!this.discoveredCategories.includes(href) && (isInteresting || Math.random() < 0.4)) {
+                categories.push(href);
+              }
+            } else if (!this.discoveredProducts.includes(href) && (isInteresting || Math.random() < 0.3)) {
+              products.push(href);
+            }
+          }
+        } catch (e) {
+          // Skip problematic elements
+        }
+      });
+    } catch (e) {
+      // Skip HTML parsing errors
+    }
+    
+    return { categories, products, pagination, related, breadcrumbs };
+  }
+
+  // Visit a page and extract links like a real user with session-based discovery
+  visitPage(url, pageType = 'page') {
+    if (this.visitedPages.includes(url)) return null; // Don't revisit same page
+    
+    // Track navigation path
+    this.navigationPath.push({ url, pageType, timestamp: Date.now() - this.sessionStartTime });
+    this.currentContext = pageType;
+    
+    const res = http.get(url, this.params);
+    const success = res.status >= 200 && res.status < 400;
+    
+    if (success) {
+      this.visitedPages.push(url);
+      
+      // Extract form key if available
+      if (!this.formKey) {
+        this.formKey = extractFormKey(res.body);
+      }
+      
+      // Extract new links from this page with enhanced discovery
+      const newLinks = this.extractLinksFromPage(res);
+      
+      // Session-based URL discovery - build user's personal navigation map
+      this.updateSessionDiscovery(newLinks, pageType);
+      
+      return { 
+        res, 
+        success, 
+        newLinks: newLinks 
+      };
+    }
+    
+    return { 
+      res, 
+      success, 
+      newLinks: { categories: [], products: [], pagination: [], related: [], breadcrumbs: [] } 
+    };
+  }
+
+  // Update session discovery based on page type and user behavior
+  updateSessionDiscovery(newLinks, pageType) {
+    // Add categories with priority based on context and interests
+    newLinks.categories.forEach(cat => {
+      if (!this.discoveredCategories.includes(cat)) {
+        // Prioritize categories based on current context and interests
+        const priority = this.calculateLinkPriority(cat, 'category');
+        if (priority > 0.3) { // Only add interesting categories
+          this.discoveredCategories.push(cat);
+        }
+      }
+    });
+    
+    // Add products with interest-based filtering
+    newLinks.products.forEach(prod => {
+      if (!this.discoveredProducts.includes(prod)) {
+        const priority = this.calculateLinkPriority(prod, 'product');
+        if (priority > 0.2) { // Only add interesting products
+          this.discoveredProducts.push(prod);
+        }
+      }
+    });
+    
+    // Add related products (high priority - users often follow these)
+    newLinks.related.forEach(rel => {
+      if (!this.discoveredRelatedProducts.includes(rel)) {
+        this.discoveredRelatedProducts.push(rel);
+      }
+    });
+    
+    // Add pagination (users browse through category pages)
+    newLinks.pagination.forEach(page => {
+      if (!this.discoveredPagination.includes(page)) {
+        this.discoveredPagination.push(page);
+      }
+    });
+    
+    // Add breadcrumbs (users navigate back)
+    newLinks.breadcrumbs.forEach(breadcrumb => {
+      if (!this.discoveredBreadcrumbs.includes(breadcrumb)) {
+        this.discoveredBreadcrumbs.push(breadcrumb);
+      }
+    });
+  }
+
+  // Calculate link priority based on user interests and context
+  calculateLinkPriority(url, linkType) {
+    let priority = 0.1; // Base priority
+    
+    // Interest matching (high priority)
+    const matchesInterest = this.interests.some(interest => 
+      url.toLowerCase().includes(interest)
+    );
+    if (matchesInterest) priority += 0.6;
+    
+    // Context-based priority
+    if (linkType === 'category' && this.currentContext === 'homepage') {
+      priority += 0.3; // Users often go to categories from homepage
+    } else if (linkType === 'product' && this.currentContext === 'category') {
+      priority += 0.4; // Users often go to products from categories
+    } else if (linkType === 'product' && this.currentContext === 'product') {
+      priority += 0.2; // Users sometimes browse related products
+    }
+    
+    // Shopping intent affects product priority
+    if (linkType === 'product') {
+      priority += this.shoppingIntent * 0.3;
+    }
+    
+    return Math.min(priority, 1.0);
+  }
+
+  // Get next URL to visit based on realistic user behavior and configuration
+  getNextUrl() {
+    // Real user decision making with configurable rates
+    const decision = Math.random();
+    
+    // Follow related products if available (high engagement behavior)
+    if (decision < RELATED_PRODUCT_FOLLOW_RATE && this.discoveredRelatedProducts.length > 0) {
+      const relatedUrl = this.discoveredRelatedProducts[Math.floor(Math.random() * this.discoveredRelatedProducts.length)];
+      return { url: relatedUrl, type: 'related_product' };
+    }
+    
+    // Browse pagination if in category context (realistic browsing)
+    if (decision < RELATED_PRODUCT_FOLLOW_RATE + PAGINATION_FOLLOW_RATE && 
+        (this.currentContext === 'category' || this.currentContext === 'pagination') && 
+        this.discoveredPagination.length > 0) {
+      const paginationUrl = this.discoveredPagination[Math.floor(Math.random() * this.discoveredPagination.length)];
+      return { url: paginationUrl, type: 'pagination' };
+    }
+    
+    // Use breadcrumbs for navigation (users navigate back)
+    if (decision < RELATED_PRODUCT_FOLLOW_RATE + PAGINATION_FOLLOW_RATE + BREADCRUMB_FOLLOW_RATE && 
+        this.discoveredBreadcrumbs.length > 0) {
+      const breadcrumbUrl = this.discoveredBreadcrumbs[Math.floor(Math.random() * this.discoveredBreadcrumbs.length)];
+      return { url: breadcrumbUrl, type: 'breadcrumb' };
+    }
+    
+    // Explore categories based on interests
+    if (this.discoveredCategories.length > 0 && Math.random() < 0.6) {
+      // Prefer categories matching interests
+      const interestedCategories = this.discoveredCategories.filter(cat =>
+        this.interests.some(interest => cat.toLowerCase().includes(interest))
+      );
+      
+      let categoryPool;
+      if (interestedCategories.length > 0 && Math.random() < INTEREST_MATCH_FOLLOW_RATE) {
+        categoryPool = interestedCategories; // Follow interests
+      } else if (Math.random() < RANDOM_EXPLORATION_RATE) {
+        categoryPool = this.discoveredCategories; // Random exploration
+      } else {
+        return null; // User decides not to browse more categories
+      }
+      
+      const categoryUrl = categoryPool[Math.floor(Math.random() * categoryPool.length)];
+      return { url: categoryUrl, type: 'category' };
+    }
+    
+    // Explore products
+    if (this.discoveredProducts.length > 0) {
+      // Apply comparison shopping behavior
+      if (this.currentContext === 'product' && Math.random() < COMPARISON_SHOPPING_RATE) {
+        const productUrl = this.discoveredProducts[Math.floor(Math.random() * this.discoveredProducts.length)];
+        return { url: productUrl, type: 'product' };
+      } else if (this.currentContext !== 'product') {
+        const productUrl = this.discoveredProducts[Math.floor(Math.random() * this.discoveredProducts.length)];
+        return { url: productUrl, type: 'product' };
+      }
+    }
+    
+    return null; // No more URLs to explore
+  }
+
+  // Add product to cart like a real user
+  addToCart(productId) {
+    if (!this.formKey || !productId) return false;
+    
+    const addToCartParams = {
+      ...this.params,
+      headers: {
+        ...this.params.headers,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+    };
+
+    const qty = Math.floor(Math.random() * (ADD_TO_CART_MAX_QTY - ADD_TO_CART_MIN_QTY + 1)) + ADD_TO_CART_MIN_QTY;
+    const addToCartData = {
+      'product': productId,
+      'form_key': this.formKey,
+      'qty': qty,
+    };
+
+    const addToCartRes = http.post(`${BASE_URL}${ADD_TO_CART_PATH}`, addToCartData, addToCartParams);
+    const success = addToCartRes.status >= 200 && addToCartRes.status < 400;
+    
+    if (success) {
+      this.cart.push({ productId, qty });
+      addToCartTrend.add(addToCartRes.timings.duration);
+    }
+    
+    return success;
+  }
+}
+
 // The default function is the main loop for each virtual user.
 export default function (data) {
-  // Skip if no URLs were discovered (prevents 404s)
-  if (!data.products || data.products.length === 0) {
-    console.log('No product URLs available, skipping this iteration');
-    return;
-  }
-  
-  if (!data.categories || data.categories.length === 0) {
-    console.log('No category URLs available, skipping this iteration');
-    return;
-  }
-
-  // Determine if this request should bypass cache
+  // Create a real user session for this virtual user
   const bypassCache = shouldBypassCache();
   const params = getHttpParams(bypassCache);
+  const user = new RealUserSession(params);
 
-  // Randomly choose a user journey based on configurable percentages
-  const userJourney = Math.random();
-  const includeApi = ENABLE_API_LOAD && Math.random() < API_TRAFFIC_PERCENTAGE;
-  
-  if (userJourney < COMPREHENSIVE_SHOPPING_PERCENTAGE) {
-    // NEW: Comprehensive Shopping Journey - Multi-category browsing with product comparison
-    comprehensiveShoppingJourney(data, params, includeApi);
-  } else if (userJourney < COMPREHENSIVE_SHOPPING_PERCENTAGE + BROWSE_JOURNEY_PERCENTAGE) {
-    // Browse journey: Homepage -> Category -> Product -> Add to Cart
-    group('Browse & Purchase Journey', function () {
-      // Visit homepage
-      group('Visit Homepage', function () {
-        const res = http.get(BASE_URL, params);
-        check(res, { 'Homepage status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-        homepageTrend.add(res.timings.duration);
-      });
-
-      sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
-
-      // Visit category page
-  group('Visit Category Page (catalog/category/view)', function () {
-    const categoryUrl = data.categories[Math.floor(Math.random() * data.categories.length)];
-    const res = http.get(categoryUrl, params);
-        check(res, { 'Category page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-    categoryPageTrend.add(res.timings.duration);
-  });
-
-      sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
-
-      // Visit product page
-      group('Visit Product Page (catalog/product/view)', function () {
-        const productUrl = data.products[Math.floor(Math.random() * data.products.length)];
-        const res = http.get(productUrl, params);
-        check(res, { 'Product page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-        productPageTrend.add(res.timings.duration);
-        
-        // Extract form key and product info for add to cart
-        const formKey = extractFormKey(res.body);
-        const { productId, requiresOptions } = extractProductInfo(res.body);
-        
-        // Only attempt add-to-cart for simple products (no required options)
-        if (formKey && productId && !requiresOptions) {
-          sleep(Math.random() * 2 + 1); // Think time before adding to cart
-          
-          // Add to cart
-          group('Add to Cart', function () {
-            const addToCartParams = {
-              ...params,
-              headers: {
-                ...params.headers,
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Requested-With': 'XMLHttpRequest',
-              },
-            };
-            
-            const addToCartData = {
-              'product': productId,
-              'form_key': formKey,
-              'qty': Math.floor(Math.random() * 3) + 1, // Random quantity 1-3
-            };
-            
-            const addToCartRes = http.post(`${BASE_URL}${ADD_TO_CART_PATH}`, addToCartData, addToCartParams);
-            check(addToCartRes, { 'Add to cart status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-            addToCartTrend.add(addToCartRes.timings.duration);
-          });
-          
-          sleep(Math.random() * 2 + 1); // Think time after adding to cart
-          
-          // Visit cart page
-          group('Visit Cart Page', function () {
-            const cartUrl = `${BASE_URL}${CART_PAGE_PATH}`;
-            const res = http.get(cartUrl, params);
-            check(res, { 'Cart page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-            cartTrend.add(res.timings.duration);
-          });
-        }
-      });
-      
-      if (includeApi) {
-        sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
-        group('API Load - Browse Journey', function () {
-          if (ENABLE_GRAPHQL_LOAD) {
-            const q = `query ($search: String!){ products(search: $search, pageSize: 3){ items { sku name } } }`;
-            const gRes = graphqlQuery(q, { search: data.searchTerms[0] || 'shirt' });
-            check(gRes, { 'GraphQL 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-            graphqlTrend.add(gRes.timings.duration);
-          }
-          if (ENABLE_REST_LOAD) {
-            const r1 = restGet('/rest/default/V1/store/storeViews');
-            if (r1.status !== 401 && r1.status !== 403) {
-              check(r1, { 'REST storeViews 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-            }
-            restTrend.add(r1.timings.duration);
-          }
-        });
-      }
-    });
-  } else if (userJourney < COMPREHENSIVE_SHOPPING_PERCENTAGE + BROWSE_JOURNEY_PERCENTAGE + SEARCH_JOURNEY_PERCENTAGE) {
-    // Search journey: Homepage -> Search -> Product -> Add to Cart
-    group('Search & Purchase Journey', function () {
-      // Visit homepage
-      group('Visit Homepage', function () {
-        const res = http.get(BASE_URL, params);
-        check(res, { 'Homepage status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-        homepageTrend.add(res.timings.duration);
-      });
-
-      sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
-
-      // Perform search
-      group('Perform Search', function () {
-        const searchTerm = data.searchTerms[Math.floor(Math.random() * data.searchTerms.length)];
-        const searchUrl = `${BASE_URL}${SEARCH_RESULT_PATH_TEMPLATE.replace('{q}', encodeURIComponent(searchTerm))}`;
-        const res = http.get(searchUrl, params);
-        check(res, { 'Search page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-        searchTrend.add(res.timings.duration);
-      });
-
-      sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
-
-      // Visit a product from search results (simulate clicking on a search result)
-      group('Visit Product from Search', function () {
-        const productUrl = data.products[Math.floor(Math.random() * data.products.length)];
-        const res = http.get(productUrl, params);
-        check(res, { 'Product page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-        productPageTrend.add(res.timings.duration);
-        
-        // Extract form key and product info for add to cart
-        const formKey = extractFormKey(res.body);
-        const { productId, requiresOptions } = extractProductInfo(res.body);
-        
-        if (formKey && productId && !requiresOptions) {
-          sleep(Math.random() * 2 + 1); // Think time before adding to cart
-          
-          // Add to cart
-          group('Add to Cart from Search', function () {
-            const addToCartParams = {
-              ...params,
-              headers: {
-                ...params.headers,
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Requested-With': 'XMLHttpRequest',
-              },
-            };
-            
-            const addToCartData = {
-              'product': productId,
-              'form_key': formKey,
-              'qty': Math.floor(Math.random() * 2) + 1, // Random quantity 1-2
-            };
-            
-            const addToCartRes = http.post(`${BASE_URL}${ADD_TO_CART_PATH}`, addToCartData, addToCartParams);
-            check(addToCartRes, { 'Add to cart status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-            addToCartTrend.add(addToCartRes.timings.duration);
-          });
-        }
-      });
-
-      if (includeApi) {
-        sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
-        group('API Load - Search Journey', function () {
-          if (ENABLE_GRAPHQL_LOAD) {
-            const q = `query ($search: String!){ products(search: $search, pageSize: 1){ items { sku } } }`;
-            const gRes = graphqlQuery(q, { search: data.searchTerms[1] || 'bag' });
-            if (gRes.status >= 200 && gRes.status < 400) {
-              check(gRes, { 'GraphQL 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-              graphqlTrend.add(gRes.timings.duration);
-              try {
-                const payload = JSON.parse(gRes.body);
-                const sku = payload && payload.data && payload.data.products && payload.data.products.items && payload.data.products.items[0] && payload.data.products.items[0].sku;
-                if (sku && ENABLE_REST_LOAD) {
-                  const cartIdRes = restPost('/rest/default/V1/guest-carts', {});
-                  if (cartIdRes.status >= 200 && cartIdRes.status < 400) {
-                    restTrend.add(cartIdRes.timings.duration);
-                    const cartId = cartIdRes.body.replace(/"/g, '');
-                    const addItemRes = restPost(`/rest/default/V1/guest-carts/${cartId}/items`, { cartItem: { quote_id: cartId, sku, qty: 1 } });
-                    if (addItemRes.status !== 401 && addItemRes.status !== 403) {
-                      check(addItemRes, { 'REST add item 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-                    }
-                    restTrend.add(addItemRes.timings.duration);
-                  }
-                }
-              } catch (_) {
-                // ignore parse issues
-              }
-            }
-          }
-        });
-      }
-    });
-  } else if (userJourney < COMPREHENSIVE_SHOPPING_PERCENTAGE + BROWSE_JOURNEY_PERCENTAGE + SEARCH_JOURNEY_PERCENTAGE + CART_JOURNEY_PERCENTAGE) {
-    // Cart abandonment journey: Homepage -> Product -> Add to Cart -> Cart -> Abandon
-    group('Cart Abandonment Journey', function () {
-      // Visit homepage
-      group('Visit Homepage', function () {
-        const res = http.get(BASE_URL, params);
-        check(res, { 'Homepage status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-        homepageTrend.add(res.timings.duration);
-      });
-
-      sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
-
-      // Visit product page
-  group('Visit Product Page (catalog/product/view)', function () {
-    const productUrl = data.products[Math.floor(Math.random() * data.products.length)];
-    const res = http.get(productUrl, params);
-        check(res, { 'Product page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-    productPageTrend.add(res.timings.duration);
-        
-        // Extract form key and product info for add to cart
-        const formKey = extractFormKey(res.body);
-        const { productId, requiresOptions } = extractProductInfo(res.body);
-        
-        if (formKey && productId && !requiresOptions) {
-          sleep(Math.random() * 2 + 1); // Think time before adding to cart
-          
-          // Add to cart
-          group('Add to Cart', function () {
-            const addToCartParams = {
-              ...params,
-              headers: {
-                ...params.headers,
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Requested-With': 'XMLHttpRequest',
-              },
-            };
-            
-            const addToCartData = {
-              'product': productId,
-              'form_key': formKey,
-              'qty': Math.floor(Math.random() * 3) + 1, // Random quantity 1-3
-            };
-            
-            const addToCartRes = http.post(`${BASE_URL}${ADD_TO_CART_PATH}`, addToCartData, addToCartParams);
-            check(addToCartRes, { 'Add to cart status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-            addToCartTrend.add(addToCartRes.timings.duration);
-          });
-          
-          sleep(Math.random() * 2 + 1); // Think time after adding to cart
-          
-          // Visit cart page
-          group('Visit Cart Page', function () {
-            const cartUrl = `${BASE_URL}${CART_PAGE_PATH}`;
-            const res = http.get(cartUrl, params);
-            check(res, { 'Cart page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-            cartTrend.add(res.timings.duration);
-          });
-          
-          sleep(Math.random() * 3 + 2); // Longer think time before checkout
-          
-          // Initiate checkout (but don't complete - simulate abandonment)
-          group('Initiate Checkout', function () {
-            const checkoutUrl = `${BASE_URL}${CHECKOUT_PAGE_PATH}`;
-            const res = http.get(checkoutUrl, params);
-            check(res, { 'Checkout page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-            checkoutTrend.add(res.timings.duration);
-          });
-          
-          if (includeApi) {
-            sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
-            group('API Load - Cart Journey', function () {
-              if (ENABLE_REST_LOAD) {
-                const countries = restGet('/rest/default/V1/directory/countries');
-                if (countries.status !== 401 && countries.status !== 403) {
-                  check(countries, { 'REST countries 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-                }
-                restTrend.add(countries.timings.duration);
-              }
-            });
-          }
-        }
-      });
-    });
-  } else if (userJourney < COMPREHENSIVE_SHOPPING_PERCENTAGE + BROWSE_JOURNEY_PERCENTAGE + SEARCH_JOURNEY_PERCENTAGE + CART_JOURNEY_PERCENTAGE + WINDOW_SHOPPING_PERCENTAGE) {
-    // Window shopping journey: Browse multiple categories and products without purchasing
-    windowShoppingJourney(data, params, includeApi);
-  } else {
-    // Quick buyer journey: Direct to product and purchase
-    quickBuyerJourney(data, params, includeApi);
-  }
-
-  sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME); // Configurable think time
+  // Simulate real user behavior with dynamic discovery
+  realUserBrowsingSession(user, data);
 }
 
-// =============================================================================
-// ENHANCED USER JOURNEY IMPLEMENTATIONS
-// =============================================================================
-
-// Comprehensive Shopping Journey - Multi-category browsing with product comparison
-function comprehensiveShoppingJourney(data, params, includeApi) {
-  group('Comprehensive Shopping Journey', function () {
-    const itemsInCart = [];
-    let formKey = null;
-    
-    // Start at homepage
-    group('Visit Homepage', function () {
-      const res = http.get(BASE_URL, params);
-      check(res, { 'Homepage status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-      homepageTrend.add(res.timings.duration);
-      formKey = extractFormKey(res.body);
+// Real User Browsing Session - simulates how actual users browse e-commerce sites
+function realUserBrowsingSession(user, fallbackData) {
+  group('Real User Browsing Session', function () {
+    // PHASE 1: Start at homepage and discover initial links
+    group('Visit Homepage & Discover Links', function () {
+      const homepageResult = user.visitPage(BASE_URL, 'homepage');
+      if (homepageResult && homepageResult.success) {
+        check(homepageResult.res, { 'Homepage status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+        homepageTrend.add(homepageResult.res.timings.duration);
+      }
     });
 
     sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
 
-    // Browse multiple categories
-    const categoriesToVisit = Math.min(MAX_CATEGORIES_PER_SESSION, Math.floor(Math.random() * 2) + 2); // 2-3 categories
-    const visitedCategories = [];
+    // PHASE 2: Dynamic browsing based on discovered links and user behavior
+    const maxBrowsingActions = Math.floor(Math.random() * (MAX_BROWSING_ACTIONS - MIN_BROWSING_ACTIONS + 1)) + MIN_BROWSING_ACTIONS;
+    let browsingActions = 0;
+    
+    while (browsingActions < maxBrowsingActions) {
+      // Get next URL based on realistic user behavior patterns
+      let nextNavigation = user.getNextUrl();
+      
+      // Fallback to predefined URLs if nothing discovered yet
+      if (!nextNavigation && browsingActions < 3) {
+        if (fallbackData.categories && fallbackData.categories.length > 0 && Math.random() < 0.7) {
+          const categoryUrl = fallbackData.categories[Math.floor(Math.random() * fallbackData.categories.length)];
+          nextNavigation = { url: categoryUrl, type: 'category' };
+        } else if (fallbackData.products && fallbackData.products.length > 0) {
+          const productUrl = fallbackData.products[Math.floor(Math.random() * fallbackData.products.length)];
+          nextNavigation = { url: productUrl, type: 'product' };
+        }
+      }
+      
+      if (!nextNavigation) break; // No more URLs to explore
+      
+      browsingActions++;
+      const actionType = nextNavigation.type;
+      const actionUrl = nextNavigation.url;
+      
+      group(`Browse ${actionType} (Action ${browsingActions})`, function () {
+        const result = user.visitPage(actionUrl, actionType);
+        if (result && result.success) {
+          // Track metrics based on page type
+          if (actionType === 'category' || actionType === 'pagination') {
+            check(result.res, { 'Category/List page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+            categoryPageTrend.add(result.res.timings.duration);
+          } else if (actionType === 'product' || actionType === 'related_product') {
+            check(result.res, { 'Product page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+            productPageTrend.add(result.res.timings.duration);
+            
+            // Real user decision: add to cart based on context and intent
+            const { productId, requiresOptions } = extractProductInfo(result.res.body);
+            let addToCartChance = 0.3; // Base chance
+            
+            // Increase chance based on context
+            if (actionType === 'related_product') addToCartChance += 0.2; // Related products are more appealing
+            if (user.shoppingIntent > 0.6) addToCartChance += 0.3; // High shopping intent
+            if (user.cart.length === 0) addToCartChance += 0.2; // First item bonus
+            
+            const shouldAddToCart = Math.random() < addToCartChance && 
+                                   productId && !requiresOptions && 
+                                   user.cart.length < MAX_PRODUCTS_IN_CART;
 
-    for (let catIndex = 0; catIndex < categoriesToVisit; catIndex++) {
-      const categoryUrl = data.categories[Math.floor(Math.random() * data.categories.length)];
-      if (visitedCategories.includes(categoryUrl)) continue; // Skip if already visited
-      visitedCategories.push(categoryUrl);
+            if (shouldAddToCart) {
+              sleep(Math.random() * 3 + 2); // Think time before adding to cart
 
-      group(`Visit Category ${catIndex + 1}`, function () {
-        const res = http.get(categoryUrl, params);
-        check(res, { 'Category page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-        categoryPageTrend.add(res.timings.duration);
+              group('Add Product to Cart', function () {
+                const addSuccess = user.addToCart(productId);
+                check({ status: addSuccess ? 200 : 400 }, { 'Add to cart successful': () => addSuccess });
+              });
+            }
+          } else if (actionType === 'breadcrumb') {
+            check(result.res, { 'Navigation page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+            // Could be homepage, category, or other navigation page
+            if (result.res.url.includes('/category') || result.res.url.includes('/gear') || result.res.url.includes('/training')) {
+              categoryPageTrend.add(result.res.timings.duration);
+            } else {
+              homepageTrend.add(result.res.timings.duration);
+            }
+          }
+        }
       });
 
-      sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
-
-      // Browse products in this category
-      const productsToView = Math.min(MAX_PRODUCTS_PER_CATEGORY, Math.floor(Math.random() * 3) + 1); // 1-3 products per category
+      // Realistic think time based on page type
+      let thinkTime = Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME;
+      if (actionType === 'product' || actionType === 'related_product') {
+        thinkTime += Math.random() * 2; // Longer time on product pages
+      } else if (actionType === 'pagination') {
+        thinkTime *= 0.7; // Faster pagination browsing
+      }
       
-      for (let prodIndex = 0; prodIndex < productsToView; prodIndex++) {
-        group(`View Product ${prodIndex + 1} in Category ${catIndex + 1}`, function () {
-          const productUrl = data.products[Math.floor(Math.random() * data.products.length)];
-          const res = http.get(productUrl, params);
-          check(res, { 'Product page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-          productPageTrend.add(res.timings.duration);
-
-          // Extract product info
-          if (!formKey) formKey = extractFormKey(res.body);
-          const { productId, requiresOptions } = extractProductInfo(res.body);
-
-          // Decide whether to add to cart (not every product)
-          const shouldAddToCart = Math.random() < 0.4 && formKey && productId && !requiresOptions && itemsInCart.length < MAX_PRODUCTS_IN_CART;
-          
-          if (shouldAddToCart) {
-            sleep(Math.random() * 2 + 1); // Think time before adding to cart
-
-            group('Add to Cart', function () {
-              const addToCartParams = {
-                ...params,
-                headers: {
-                  ...params.headers,
-                  'Content-Type': 'application/x-www-form-urlencoded',
-                  'X-Requested-With': 'XMLHttpRequest',
-                },
-              };
-
-              const qty = Math.floor(Math.random() * (ADD_TO_CART_MAX_QTY - ADD_TO_CART_MIN_QTY + 1)) + ADD_TO_CART_MIN_QTY;
-              const addToCartData = {
-                'product': productId,
-                'form_key': formKey,
-                'qty': qty,
-              };
-
-              const addToCartRes = http.post(`${BASE_URL}${ADD_TO_CART_PATH}`, addToCartData, addToCartParams);
-              check(addToCartRes, { 'Add to cart status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-              addToCartTrend.add(addToCartRes.timings.duration);
+      sleep(thinkTime);
+      
+      // Real user behavior: sometimes get distracted and explore different areas
+      if (Math.random() < DISTRACTION_RATE) {
+        sleep(Math.random() * 2 + 1); // Extra think time when changing focus
+        
+        // When distracted, users might follow impulse buying behavior
+        if (Math.random() < IMPULSE_BUYING_RATE && user.discoveredProducts.length > 0) {
+          const impulseProduct = user.discoveredProducts[Math.floor(Math.random() * user.discoveredProducts.length)];
+          group('Impulse Product View', function () {
+            const impulseResult = user.visitPage(impulseProduct, 'product');
+            if (impulseResult && impulseResult.success) {
+              productPageTrend.add(impulseResult.res.timings.duration);
               
-              if (addToCartRes.status >= 200 && addToCartRes.status < 400) {
-                itemsInCart.push({ productId, qty });
+              // Higher chance to add impulse items to cart
+              const { productId, requiresOptions } = extractProductInfo(impulseResult.res.body);
+              if (Math.random() < 0.6 && productId && !requiresOptions && user.cart.length < MAX_PRODUCTS_IN_CART) {
+                const addSuccess = user.addToCart(productId);
+                check({ status: addSuccess ? 200 : 400 }, { 'Impulse add to cart': () => addSuccess });
               }
-            });
+            }
+          });
+          browsingActions++; // Count this as a browsing action
+        }
+      }
+    }
+
+    // PHASE 4: Cart and checkout behavior (if user has items)
+    if (user.cart.length > 0) {
+      sleep(Math.random() * 3 + 2); // Think time before going to cart
+
+      group('Visit Shopping Cart', function () {
+        const cartResult = user.visitPage(`${BASE_URL}${CART_PAGE_PATH}`, 'cart');
+        if (cartResult && cartResult.success) {
+          check(cartResult.res, { 'Cart page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+          cartTrend.add(cartResult.res.timings.duration);
+        }
+      });
+
+      sleep(Math.random() * 4 + 3); // Think time in cart (longer)
+
+      // Real user checkout decision
+      if (Math.random() < CHECKOUT_COMPLETION_RATE) {
+        group('Proceed to Checkout', function () {
+          const checkoutResult = user.visitPage(`${BASE_URL}${CHECKOUT_PAGE_PATH}`, 'checkout');
+          if (checkoutResult && checkoutResult.success) {
+            check(checkoutResult.res, { 'Checkout page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+            checkoutTrend.add(checkoutResult.res.timings.duration);
           }
         });
-
-        sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
-      }
-
-      // Sometimes return to previous category (simulate comparison shopping)
-      if (catIndex > 0 && Math.random() < CATEGORY_RETURN_RATE) {
-        group(`Return to Previous Category`, function () {
-          const previousCategoryUrl = visitedCategories[Math.floor(Math.random() * visitedCategories.length)];
-          const res = http.get(previousCategoryUrl, params);
-          check(res, { 'Return to category status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-          categoryPageTrend.add(res.timings.duration);
-        });
-
-        sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
       }
     }
 
-    // If items in cart, proceed to cart and potentially checkout
-    if (itemsInCart.length > 0) {
-      group('Visit Cart Page', function () {
-        const cartUrl = `${BASE_URL}${CART_PAGE_PATH}`;
-        const res = http.get(cartUrl, params);
-        check(res, { 'Cart page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-        cartTrend.add(res.timings.duration);
-      });
-
-      sleep(Math.random() * 3 + 2); // Longer think time in cart
-
-      // Complete checkout based on completion rate
-      if (Math.random() < CHECKOUT_COMPLETION_RATE) {
-        group('Complete Checkout', function () {
-          const checkoutUrl = `${BASE_URL}${CHECKOUT_PAGE_PATH}`;
-          const res = http.get(checkoutUrl, params);
-          check(res, { 'Checkout page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-          checkoutTrend.add(res.timings.duration);
-        });
-      }
-    }
-
-    // Include API calls if enabled
-    if (includeApi) {
+    // PHASE 5: API interactions (simulating modern frontend behavior)
+    if (ENABLE_API_LOAD && Math.random() < API_TRAFFIC_PERCENTAGE) {
       sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
-      group('API Load - Comprehensive Journey', function () {
-        if (ENABLE_GRAPHQL_LOAD) {
+      
+      group('API Interactions', function () {
+        if (ENABLE_GRAPHQL_LOAD && user.interests.length > 0) {
+          // Search for products matching user interests
+          const searchTerm = user.interests[Math.floor(Math.random() * user.interests.length)];
           const q = `query ($search: String!){ products(search: $search, pageSize: ${GRAPHQL_SEARCH_PAGE_SIZE}){ items { sku name } } }`;
-          const gRes = graphqlQuery(q, { search: data.searchTerms[0] || 'shirt' });
-          check(gRes, { 'GraphQL 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+          const gRes = graphqlQuery(q, { search: searchTerm });
+          check(gRes, { 'GraphQL search 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
           graphqlTrend.add(gRes.timings.duration);
         }
+        
         if (ENABLE_REST_LOAD) {
-          const r1 = restGet('/rest/default/V1/store/storeViews');
-          if (r1.status !== 401 && r1.status !== 403) {
-            check(r1, { 'REST storeViews 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+          const storeRes = restGet('/rest/default/V1/store/storeViews');
+          if (storeRes.status !== 401 && storeRes.status !== 403) {
+            check(storeRes, { 'REST store views 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
           }
-          restTrend.add(r1.timings.duration);
+          restTrend.add(storeRes.timings.duration);
         }
       });
     }
-  });
-}
 
-// Window Shopping Journey - Browse multiple categories and products without purchasing
-function windowShoppingJourney(data, params, includeApi) {
-  group('Window Shopping Journey', function () {
-    // Start at homepage
-    group('Visit Homepage', function () {
-      const res = http.get(BASE_URL, params);
-      check(res, { 'Homepage status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-      homepageTrend.add(res.timings.duration);
-    });
-
-    sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
-
-    // Browse multiple categories and products without buying
-    const categoriesToBrowse = Math.floor(Math.random() * 3) + 2; // 2-4 categories
-    
-    for (let i = 0; i < categoriesToBrowse; i++) {
-      group(`Browse Category ${i + 1}`, function () {
-        const categoryUrl = data.categories[Math.floor(Math.random() * data.categories.length)];
-        const res = http.get(categoryUrl, params);
-        check(res, { 'Category page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-        categoryPageTrend.add(res.timings.duration);
-      });
-
+    // PHASE 6: Sometimes do a search based on what user has seen
+    if (Math.random() < 0.3 && fallbackData.searchTerms && fallbackData.searchTerms.length > 0) {
       sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
-
-      // View some products
-      const productsToView = Math.floor(Math.random() * 2) + 1; // 1-2 products
-      for (let j = 0; j < productsToView; j++) {
-        group(`View Product ${j + 1}`, function () {
-          const productUrl = data.products[Math.floor(Math.random() * data.products.length)];
-          const res = http.get(productUrl, params);
-          check(res, { 'Product page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-          productPageTrend.add(res.timings.duration);
-        });
-
-        sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
-      }
-    }
-
-    // Sometimes do a search
-    if (Math.random() < 0.5) {
+      
       group('Perform Search', function () {
-        const searchTerm = data.searchTerms[Math.floor(Math.random() * data.searchTerms.length)];
+        const searchTerm = fallbackData.searchTerms[Math.floor(Math.random() * fallbackData.searchTerms.length)];
         const searchUrl = `${BASE_URL}${SEARCH_RESULT_PATH_TEMPLATE.replace('{q}', encodeURIComponent(searchTerm))}`;
-        const res = http.get(searchUrl, params);
-        check(res, { 'Search page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-        searchTrend.add(res.timings.duration);
+        const searchResult = user.visitPage(searchUrl, 'search');
+        if (searchResult && searchResult.success) {
+          check(searchResult.res, { 'Search page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+          searchTrend.add(searchResult.res.timings.duration);
+        }
       });
     }
-  });
-}
-
-// Quick Buyer Journey - Direct to product and purchase
-function quickBuyerJourney(data, params, includeApi) {
-  group('Quick Buyer Journey', function () {
-    // Start at homepage briefly
-    group('Visit Homepage', function () {
-      const res = http.get(BASE_URL, params);
-      check(res, { 'Homepage status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-      homepageTrend.add(res.timings.duration);
-    });
-
-    sleep(Math.random() * 2 + 1); // Shorter think time
-
-    // Go directly to a product
-    group('Visit Product Page', function () {
-      const productUrl = data.products[Math.floor(Math.random() * data.products.length)];
-      const res = http.get(productUrl, params);
-      check(res, { 'Product page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-      productPageTrend.add(res.timings.duration);
-
-      // Extract form key and product info for add to cart
-      const formKey = extractFormKey(res.body);
-      const { productId, requiresOptions } = extractProductInfo(res.body);
-
-      if (formKey && productId && !requiresOptions) {
-        sleep(Math.random() * 1 + 1); // Quick decision
-
-        // Add to cart
-        group('Add to Cart', function () {
-          const addToCartParams = {
-            ...params,
-            headers: {
-              ...params.headers,
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'X-Requested-With': 'XMLHttpRequest',
-            },
-          };
-
-          const addToCartData = {
-            'product': productId,
-            'form_key': formKey,
-            'qty': 1, // Quick buyers usually buy just 1
-          };
-
-          const addToCartRes = http.post(`${BASE_URL}${ADD_TO_CART_PATH}`, addToCartData, addToCartParams);
-          check(addToCartRes, { 'Add to cart status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-          addToCartTrend.add(addToCartRes.timings.duration);
-        });
-
-        sleep(Math.random() * 1 + 1); // Quick transition
-
-        // Go to cart
-        group('Visit Cart Page', function () {
-          const cartUrl = `${BASE_URL}${CART_PAGE_PATH}`;
-          const res = http.get(cartUrl, params);
-          check(res, { 'Cart page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-          cartTrend.add(res.timings.duration);
-        });
-
-        sleep(Math.random() * 1 + 1); // Quick decision
-
-        // Quick checkout
-        group('Quick Checkout', function () {
-          const checkoutUrl = `${BASE_URL}${CHECKOUT_PAGE_PATH}`;
-          const res = http.get(checkoutUrl, params);
-          check(res, { 'Checkout page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-          checkoutTrend.add(res.timings.duration);
-        });
-      }
-    });
   });
 }
