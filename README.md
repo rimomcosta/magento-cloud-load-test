@@ -11,11 +11,18 @@ chmod +x run-load-test.sh
 ./run-load-test.sh https://your-magento-site.com
 ```
 
-**Examples:**
+**Flexible Parameter Support:**
 ```bash
+# Default settings (500 users, 300 seconds)
 ./run-load-test.sh https://your-magento-site.com
-./run-load-test.sh https://staging.your-site.com
-./run-load-test.sh https://4kxkvuyyo22dm.dummycachetest.com
+
+# Custom load (50 users, 60 seconds)
+./run-load-test.sh 50 60 https://your-magento-site.com
+
+# Different scenarios
+./run-load-test.sh 10 30 https://staging.your-site.com     # Light load
+./run-load-test.sh 100 180 https://your-magento-site.com   # Medium load
+./run-load-test.sh 500 600 https://your-magento-site.com   # Heavy load
 ```
 
 The script will:
