@@ -132,7 +132,7 @@ show_usage() {
     echo ""
     echo "The script will:"
     echo "  • Automatically install k6 if needed"
-    echo "  • Update the load test script with your website URL"
+    echo "  • Pass your website URL to the load test script"
     echo "  • Run a comprehensive load test"
     echo ""
 }
@@ -199,31 +199,11 @@ main() {
         exit 1
     fi
     
-    # Update the BASE_URL in the k6 script
-    print_status "Updating load test script with website URL..."
-    
-    # Create a temporary script with the updated URL
-    local TEMP_SCRIPT=$(mktemp)
-    
-    # Replace the BASE_URL in the script
-    sed "s|const BASE_URL = 'https://4kxkvuyyo22dm.dummycachetest.com';|const BASE_URL = '$MAGENTO_URL';|g" k6-magento-load-test.js > "$TEMP_SCRIPT"
-    
-    if [ $? -eq 0 ]; then
-        print_success "Load test script updated with $MAGENTO_URL"
-    else
-        print_error "Failed to update load test script"
-        rm -f "$TEMP_SCRIPT"
-        exit 1
-    fi
-    
     print_success "Starting load test..."
     echo ""
     
-    # Run the load test with the temporary script
-    k6 run "$TEMP_SCRIPT"
-    
-    # Clean up temporary file
-    rm -f "$TEMP_SCRIPT"
+    # Run the load test with environment variable
+    MAGENTO_URL="$MAGENTO_URL" k6 run k6-magento-load-test.js
     
     echo ""
     print_success "Load test completed!"

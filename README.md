@@ -139,7 +139,12 @@ The test monitors these performance criteria:
 ./run-load-test.sh https://your-magento-site.com
 ```
 
-**Method 2: Manual Edit**
+**Method 2: Environment Variable**
+```bash
+MAGENTO_URL=https://your-magento-site.com k6 run k6-magento-load-test.js
+```
+
+**Method 3: Manual Edit**
 Update the `BASE_URL` in `k6-magento-load-test.js`:
 ```javascript
 const BASE_URL = 'https://your-magento-site.com';

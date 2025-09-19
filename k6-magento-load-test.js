@@ -10,6 +10,8 @@
  * 
  * USAGE:
  *   k6 run k6-magento-load-test.js
+ *   MAGENTO_URL=https://your-site.com k6 run k6-magento-load-test.js
+ *   ./run-load-test.sh https://your-site.com
  * 
  * CONFIGURATION:
  *   All test parameters are configurable at the top of this file.
@@ -30,8 +32,8 @@ import { Trend } from 'k6/metrics';
 // LOAD TEST CONFIGURATION - Adjust these parameters to tune your test
 // =============================================================================
 
-// Target website
-const BASE_URL = 'https://4kxkvuyyo22dm.dummycachetest.com';
+// Target website - can be overridden with environment variable MAGENTO_URL
+const BASE_URL = __ENV.MAGENTO_URL || 'https://4kxkvuyyo22dm.dummycachetest.com';
 
 // Load test parameters - Heavy load testing
 const VIRTUAL_USERS = 500;                     // Number of concurrent virtual users (heavy load)
