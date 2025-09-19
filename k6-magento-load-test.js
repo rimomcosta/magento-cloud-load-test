@@ -743,19 +743,72 @@ class RealUserSession {
     return mobileAgents[Math.floor(Math.random() * mobileAgents.length)];
   }
 
-  // Update session cookies from response
+  // Comprehensive session cookie management
   updateSessionCookies(response) {
     if (response.headers && response.headers['Set-Cookie']) {
       const cookies = response.headers['Set-Cookie'];
-      if (Array.isArray(cookies)) {
-        cookies.forEach(cookie => {
+      const cookieArray = Array.isArray(cookies) ? cookies : [cookies];
+      
+      cookieArray.forEach(cookie => {
+        if (typeof cookie === 'string') {
+          // Extract PHPSESSID (main session identifier)
           if (cookie.includes('PHPSESSID')) {
             this.sessionId = cookie.match(/PHPSESSID=([^;]+)/)?.[1];
           }
-        });
-      } else if (typeof cookies === 'string' && cookies.includes('PHPSESSID')) {
-        this.sessionId = cookies.match(/PHPSESSID=([^;]+)/)?.[1];
+          
+          // Extract customer login status
+          if (cookie.includes('customer_logged_in')) {
+            this.isLoggedIn = cookie.includes('customer_logged_in=1');
+          }
+          
+          // Extract customer ID if available
+          if (cookie.includes('customer_id')) {
+            const customerIdMatch = cookie.match(/customer_id=([^;]+)/);
+            if (customerIdMatch) {
+              this.customerId = customerIdMatch[1];
+            }
+          }
+          
+          // Extract form key from cookies (some Magento versions store it there)
+          if (cookie.includes('form_key') && !this.formKey) {
+            const formKeyMatch = cookie.match(/form_key=([^;]+)/);
+            if (formKeyMatch) {
+              this.formKey = formKeyMatch[1];
+            }
+          }
+          
+          // Extract cart ID from cookies
+          if (cookie.includes('mage-cache-sessid')) {
+            this.cartId = cookie.match(/mage-cache-sessid=([^;]+)/)?.[1];
+          }
+        }
+      });
+    }
+  }
+
+  // Extract customer information from page content
+  extractCustomerInfo(html) {
+    if (!html || typeof html !== 'string') return;
+    
+    try {
+      // Check if user is logged in based on page content
+      if (html.includes('customer/account/logout') || html.includes('Welcome,')) {
+        this.isLoggedIn = true;
       }
+      
+      // Extract customer ID from JavaScript variables
+      const customerIdMatch = html.match(/customerData['"]\s*:\s*\{[^}]*id['"]\s*:\s*['"]?(\d+)['"]?/);
+      if (customerIdMatch) {
+        this.customerId = customerIdMatch[1];
+      }
+      
+      // Extract cart ID from page content
+      const cartIdMatch = html.match(/cart['"]\s*:\s*\{[^}]*id['"]\s*:\s*['"]?([^'"]+)['"]?/);
+      if (cartIdMatch) {
+        this.cartId = cartIdMatch[1];
+      }
+    } catch (e) {
+      // Ignore extraction errors
     }
   }
 
@@ -869,7 +922,7 @@ class RealUserSession {
     return { categories, products, pagination, related, breadcrumbs };
   }
 
-  // Visit a page and extract links like a real user with session-based discovery
+  // Visit a page and extract links like a real user with comprehensive session management
   visitPage(url, pageType = 'page') {
     if (this.visitedPages.includes(url)) return null; // Don't revisit same page
     
@@ -877,16 +930,34 @@ class RealUserSession {
     this.navigationPath.push({ url, pageType, timestamp: Date.now() - this.sessionStartTime });
     this.currentContext = pageType;
     
-    const res = http.get(url, this.params);
+    // Enhanced params with cookie jar for session persistence
+    const requestParams = {
+      ...this.params,
+      jar: this.cookieJar,  // Use cookie jar for session persistence
+      headers: {
+        ...this.params.headers,
+        // Add session-specific headers if available
+        ...(this.sessionId && { 'X-Session-ID': this.sessionId }),
+        ...(this.customerId && { 'X-Customer-ID': this.customerId }),
+      }
+    };
+    
+    const res = http.get(url, requestParams);
     const success = res.status >= 200 && res.status < 400;
     
     if (success) {
       this.visitedPages.push(url);
       
+      // Comprehensive session data extraction
+      this.updateSessionCookies(res);
+      
       // Extract form key if available
       if (!this.formKey) {
         this.formKey = extractFormKey(res.body);
       }
+      
+      // Extract customer information if available
+      this.extractCustomerInfo(res.body);
       
       // Extract new links from this page with enhanced discovery
       const newLinks = this.extractLinksFromPage(res);
@@ -1036,16 +1107,21 @@ class RealUserSession {
     return null; // No more URLs to explore
   }
 
-  // Enhanced add to cart with configurable product support
+  // Enhanced add to cart with comprehensive session management
   addToCart(productId, availableOptions = {}) {
     if (!this.formKey || !productId) return false;
     
     const addToCartParams = {
       ...this.params,
+      jar: this.cookieJar,  // Essential for cart session persistence
       headers: {
         ...this.params.headers,
         'Content-Type': 'application/x-www-form-urlencoded',
         'X-Requested-With': 'XMLHttpRequest',
+        'Referer': this.visitedPages[this.visitedPages.length - 1] || BASE_URL,
+        // Include session-specific headers
+        ...(this.sessionId && { 'X-Session-ID': this.sessionId }),
+        ...(this.customerId && { 'X-Customer-ID': this.customerId }),
       },
     };
 
@@ -1089,7 +1165,7 @@ class RealUserSession {
     return false;
   }
 
-  // Update cart quantities
+  // Update cart quantities with proper session management
   updateCartQuantities() {
     if (this.cart.length === 0) return false;
     
@@ -1099,9 +1175,12 @@ class RealUserSession {
     
     const updateParams = {
       ...this.params,
+      jar: this.cookieJar,  // Use cookie jar for session persistence
       headers: {
         ...this.params.headers,
         'Content-Type': 'application/x-www-form-urlencoded',
+        'Referer': `${BASE_URL}${CART_PAGE_PATH}`,
+        ...(this.sessionId && { 'X-Session-ID': this.sessionId }),
       },
     };
 
@@ -1117,6 +1196,7 @@ class RealUserSession {
     if (success) {
       cartItem.qty = newQty;
       cartTrend.add(updateRes.timings.duration);
+      this.updateSessionCookies(updateRes);
     }
     
     return success;
@@ -1132,9 +1212,12 @@ class RealUserSession {
     
     const removeParams = {
       ...this.params,
+      jar: this.cookieJar,  // Use cookie jar for session persistence
       headers: {
         ...this.params.headers,
         'Content-Type': 'application/x-www-form-urlencoded',
+        'Referer': `${BASE_URL}${CART_PAGE_PATH}`,
+        ...(this.sessionId && { 'X-Session-ID': this.sessionId }),
       },
     };
 
@@ -1150,6 +1233,7 @@ class RealUserSession {
     if (success) {
       this.cart.splice(itemIndex, 1);
       cartTrend.add(removeRes.timings.duration);
+      this.updateSessionCookies(removeRes);
     }
     
     return success;
@@ -1162,9 +1246,12 @@ class RealUserSession {
     
     const couponParams = {
       ...this.params,
+      jar: this.cookieJar,  // Use cookie jar for session persistence
       headers: {
         ...this.params.headers,
         'Content-Type': 'application/x-www-form-urlencoded',
+        'Referer': `${BASE_URL}${CART_PAGE_PATH}`,
+        ...(this.sessionId && { 'X-Session-ID': this.sessionId }),
       },
     };
 
@@ -1179,6 +1266,7 @@ class RealUserSession {
     
     if (success) {
       cartTrend.add(couponRes.timings.duration);
+      this.updateSessionCookies(couponRes);
     }
     
     return success;
