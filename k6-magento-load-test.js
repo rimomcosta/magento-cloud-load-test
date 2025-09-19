@@ -1677,7 +1677,7 @@ function realUserBrowsingSession(user, fallbackData) {
     // CMS/Content pages
     if (Math.random() < TRAFFIC_CMS_PAGES) {
       sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
-      const cmsPages = [ABOUT_US_PATH, CONTACT_US_PATH, SITEMAP_PATH];
+      const cmsPages = ['/about-us/', '/contact/', '/sitemap/'];
       const cmsPage = cmsPages[Math.floor(Math.random() * cmsPages.length)];
       group('CMS Content Pages', function () {
         const cmsResult = user.visitPage(`${BASE_URL}${cmsPage}`, 'cms_page');
