@@ -150,6 +150,8 @@ Update the `BASE_URL` in `k6-magento-load-test.js`:
 const BASE_URL = 'https://your-magento-site.com';
 ```
 
+**Note**: The MAGENTO_URL environment variable is REQUIRED. The script will fail with a clear error message if no URL is provided.
+
 ### Adjusting Load Profile
 For different scenarios:
 
