@@ -2,6 +2,77 @@
 
 A comprehensive load testing solution for Magento websites using k6, designed to simulate realistic e-commerce user behavior and provide detailed performance insights.
 
+## 🍪 Understanding Session Affinity in Load Testing
+
+### **Critical Load Balancer Behavior**
+
+When running heavy load tests, you may notice that **new nodes don't receive equal traffic**. This is **normal and expected** due to **session affinity (sticky sessions)**.
+
+### **What You'll See:**
+
+```
+Node 1: 🔥🔥🔥🔥🔥 (High load, original sessions stay here)
+Node 2: 🔥          (Low load, only new sessions)  
+Node 3: 🔥          (Low load, only new sessions)
+```
+
+### **Why This Happens:**
+
+**1. Session Persistence:**
+- Each virtual user maintains **persistent cookies** (PHPSESSID)
+- Load balancer routes requests based on session cookies
+- Sessions that start on Node 1 **always stay on Node 1**
+
+**2. Realistic User Behavior:**
+- Our script simulates **real users** with 30-60+ second sessions
+- Real customers don't restart browsers between page visits
+- Cookie jar ensures session continuity (like real browsers)
+
+**3. Load Balancer Logic:**
+```
+if (PHPSESSID exists on Node 1) → route to Node 1
+if (new session) → route to available node (2 or 3)
+```
+
+### **This is VALUABLE Testing Because:**
+
+✅ **Tests Real Conditions**: Matches actual production behavior  
+✅ **Session Storage Performance**: Tests how nodes handle session data  
+✅ **Load Balancer Validation**: Confirms sticky session configuration  
+✅ **Scaling Insights**: Shows when/how new nodes actually help  
+
+### **Load Distribution Strategies:**
+
+**For More Even Distribution:**
+```yaml
+# Shorter sessions = more new sessions = better node distribution
+browsingPatterns:
+  maxBrowsingActions: 3    # Short sessions
+  minBrowsingActions: 1    # Quick visits
+
+# Faster ramp-up = more new sessions hitting new nodes
+loadTest:
+  rampUpDuration: "30s"    # Quick ramp-up
+  virtualUsers: 1000       # More users = more new sessions
+```
+
+**For Testing Session Affinity:**
+```yaml
+# Longer sessions = test sticky session performance
+browsingPatterns:
+  maxBrowsingActions: 25   # Long sessions
+  minBrowsingActions: 15   # Extended browsing
+
+# Slower ramp-up = test existing node capacity
+loadTest:
+  rampUpDuration: "120s"   # Gradual ramp-up
+```
+
+### **Key Takeaway:**
+**This behavior is not a bug - it's realistic user simulation that reveals how your load balancer and session management perform under real conditions!**
+
+---
+
 ## 🚀 Quick Start
 
 ### One-Command Setup & Run
