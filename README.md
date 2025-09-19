@@ -59,6 +59,20 @@ ecommerceFlow:
   
   # Percentage of users who complete checkout (0.0-1.0)
   checkoutCompletionRate: 0.8
+
+# API traffic control (easily adjustable!)
+api:
+  enableApiLoad: true
+  enableGraphqlLoad: true
+  enableRestLoad: true
+  apiTrafficPercentage: 0.05    # 5% API traffic (increase to 0.3 for 30%)
+
+# Browsing patterns
+browsingPatterns:
+  maxBrowsingActions: 12
+  relatedProductFollowRate: 0.6   # Users follow related products
+  paginationFollowRate: 0.4       # Users browse category pages
+  interestMatchFollowRate: 0.8    # Users follow their interests
 ```
 
 ## 📋 Prerequisites
@@ -106,11 +120,15 @@ sudo yum install https://github.com/grafana/k6/releases/download/v0.47.0/k6-0.47
 - **API Load**: GraphQL and REST API endpoints
 
 ### Advanced Features
-- **Real URL Discovery**: Scrapes actual URLs from your Magento site
-- **Cache Bypass**: 30% of requests bypass Fastly cache for New Relic visibility
-- **Session Management**: CSRF token extraction and form submissions
+- **Configurable Product Support**: Handles size/color options automatically
+- **Enhanced Session Management**: Cookie tracking and session persistence
+- **Mobile User Simulation**: 40% mobile users with different behavior patterns
+- **Cart Management**: Add, modify, remove items, apply coupons
+- **Customer Account Areas**: Login, registration, account dashboard
+- **Wishlist & Comparison**: Product wishlist and comparison functionality
+- **Flexible API Control**: Adjust GraphQL/REST traffic from 5% to 50%+
+- **Cache Bypass**: 30% of requests bypass cache for New Relic visibility
 - **Error Handling**: Graceful handling of timeouts and server errors
-- **Configurable Parameters**: Easy tuning of load, duration, and thresholds
 
 ## ⚙️ Configuration
 
@@ -204,6 +222,61 @@ The test monitors these performance criteria:
 - **30% Cache Bypass**: Ensures backend traffic visibility
 - **Real Transaction Names**: `catalog/category/view`, `catalog/product/view`
 - **API Monitoring**: GraphQL and REST endpoint performance
+
+### Traffic Distribution Control
+
+**Easily adjust traffic to any Magento area:**
+
+```yaml
+# Focus on API testing
+api:
+  apiTrafficPercentage: 0.3    # 30% API traffic (increased from 5%)
+
+# Focus on catalog browsing  
+browsingPatterns:
+  relatedProductFollowRate: 0.8   # 80% follow related products
+  paginationFollowRate: 0.7       # 70% browse category pages
+
+# Focus on cart and checkout
+ecommerceFlow:
+  checkoutCompletionRate: 0.9     # 90% complete checkout
+  maxProductsInCart: 8            # Larger cart sizes
+```
+
+**Common Testing Scenarios:**
+
+```yaml
+# API Performance Testing (increase GraphQL/REST)
+api:
+  apiTrafficPercentage: 0.4    # 40% API traffic (vs default 5%)
+
+# Catalog Performance Testing (focus on browsing)
+browsingPatterns:
+  maxBrowsingActions: 20       # More page views per session
+  relatedProductFollowRate: 0.9   # 90% follow related products
+  paginationFollowRate: 0.8       # 80% browse category pages
+
+# Checkout Flow Testing (focus on purchasing)
+ecommerceFlow:
+  checkoutCompletionRate: 0.95    # 95% complete checkout
+  maxProductsInCart: 8            # Larger cart sizes
+  
+# Mobile-Heavy Testing (focus on mobile users)
+browsingPatterns:
+  minBrowsingActions: 3           # Shorter mobile sessions
+  maxBrowsingActions: 8
+```
+
+### Quick Traffic Adjustments
+
+**Want to test specific areas? Just adjust these values:**
+
+- **More GraphQL**: `api.apiTrafficPercentage: 0.3` (30% API traffic)
+- **More Categories**: `browsingPatterns.paginationFollowRate: 0.8` (80% category browsing)
+- **More Cart Activity**: `ecommerceFlow.checkoutCompletionRate: 0.9` (90% checkout)
+- **More Products**: `browsingPatterns.relatedProductFollowRate: 0.9` (90% product following)
+- **Shorter Sessions**: `browsingPatterns.maxBrowsingActions: 5` (quick sessions)
+- **Longer Sessions**: `browsingPatterns.maxBrowsingActions: 25` (extensive browsing)
 
 ## 🔧 Customization
 
