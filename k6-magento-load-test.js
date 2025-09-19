@@ -1,34 +1,48 @@
 /**
- * Magento Load Test Script for k6
+ * Enhanced Magento Load Test Script for k6
  * 
- * This script performs comprehensive load testing on Magento websites, covering:
- * - Homepage performance
- * - Catalog/Category View (catalog/category/view)
- * - Catalog/Product View (catalog/product/view)
- * - Search functionality
- * - Cart page performance
+ * This script performs comprehensive e-commerce load testing on Magento websites, covering:
+ * - Complete end-to-end user journeys
+ * - Multi-category browsing sessions
+ * - Product comparison and cross-shopping
+ * - Realistic cart and checkout flows
+ * - Homepage, Category, Product, Search, Cart, and Checkout performance
+ * - API load testing (REST and GraphQL)
  * 
  * USAGE:
  *   MAGENTO_URL=https://your-site.com k6 run k6-magento-load-test.js
  *   ./run-load-test.sh https://your-site.com
  * 
  * CONFIGURATION:
- *   All test parameters are configurable at the top of this file.
- *   Simply modify the values below to adjust your load test.
+ *   - Default configuration is embedded in the script
+ *   - Override any setting by creating 'load-test-config.json' in the same directory
+ *   - All test parameters can be customized via the config file
  * 
- * COMMON SCENARIOS:
- *   Light Load:    VIRTUAL_USERS = 10,  SUSTAINED_DURATION = '1m'
- *   Medium Load:   VIRTUAL_USERS = 20,  SUSTAINED_DURATION = '2m'  (default)
- *   Heavy Load:    VIRTUAL_USERS = 50,  SUSTAINED_DURATION = '3m'
- *   Stress Test:   VIRTUAL_USERS = 100, SUSTAINED_DURATION = '5m'
+ * USER JOURNEYS:
+ *   1. Comprehensive Shopping: Multi-category browsing with product comparison
+ *   2. Browse & Purchase: Category → Product → Cart → Checkout
+ *   3. Search & Purchase: Search → Product → Cart
+ *   4. Cart Abandonment: Browse → Add to Cart → Abandon at Checkout
+ *   5. Window Shopping: Browse multiple categories and products
+ *   6. Quick Buyer: Direct product purchase
  */
 
 import http from 'k6/http';
 import { check, sleep, group } from 'k6';
 import { Trend } from 'k6/metrics';
 
+// Load configuration from file if available
+let config = {};
+try {
+  const configFile = open('./load-test-config.json');
+  config = JSON.parse(configFile);
+  console.log('✅ Loaded configuration from load-test-config.json');
+} catch (e) {
+  console.log('ℹ️  No config file found, using default configuration');
+}
+
 // =============================================================================
-// LOAD TEST CONFIGURATION - Adjust these parameters to tune your test
+// DYNAMIC CONFIGURATION SYSTEM
 // =============================================================================
 
 // Target website - MUST be provided via environment variable MAGENTO_URL
@@ -39,70 +53,111 @@ if (!BASE_URL) {
   throw new Error('MAGENTO_URL environment variable is required. Usage: MAGENTO_URL=https://your-site.com k6 run k6-magento-load-test.js');
 }
 
-// Load test parameters - Heavy load testing
-const VIRTUAL_USERS = 500;                     // Number of concurrent virtual users (heavy load)
-const RAMP_UP_DURATION = '60s';              // Time to ramp up to target users
-const SUSTAINED_DURATION = '5m';             // Time to maintain target load
-const RAMP_DOWN_DURATION = '60s';           // Time to ramp down to 0 users
+// Helper function to get config value with fallback to default
+function getConfig(path, defaultValue) {
+  const keys = path.split('.');
+  let value = config;
+  for (const key of keys) {
+    if (value && typeof value === 'object' && key in value) {
+      value = value[key];
+    } else {
+      return defaultValue;
+    }
+  }
+  return value;
+}
 
-// HTTP timeout configuration for heavy load
-const HTTP_TIMEOUT = '60s';                   // HTTP request timeout (60 seconds for heavy load)
+// Load test parameters
+const VIRTUAL_USERS = getConfig('loadTest.virtualUsers', 500);
+const RAMP_UP_DURATION = getConfig('loadTest.rampUpDuration', '60s');
+const SUSTAINED_DURATION = getConfig('loadTest.sustainedDuration', '5m');
+const RAMP_DOWN_DURATION = getConfig('loadTest.rampDownDuration', '60s');
 
-// Performance thresholds (in milliseconds) - Adjusted for heavy load testing
-const HTTP_ERROR_THRESHOLD = 0.25;           // Max HTTP error rate (25% - expected under heavy load)
-const HTTP_DURATION_THRESHOLD = 60000;       // Max HTTP request duration (60s - heavy load)
-const HOMEPAGE_DURATION_THRESHOLD = 45000;   // Max homepage response time (45s - heavy load)
-const PRODUCT_DURATION_THRESHOLD = 50000;     // Max product page response time (50s - heavy load)
-const CATEGORY_DURATION_THRESHOLD = 50000;    // Max category page response time (50s - heavy load)
-const SEARCH_DURATION_THRESHOLD = 45000;     // Max search response time (45s - heavy load)
-const CART_DURATION_THRESHOLD = 45000;       // Max cart page response time (45s - heavy load)
+// HTTP timeout configuration
+const HTTP_TIMEOUT = getConfig('performance.httpTimeout', '60s');
 
-// User behavior simulation - Optimized for category/product page hits
-const MIN_THINK_TIME = 1;                    // Minimum think time between actions (seconds)
-const MAX_THINK_TIME = 4;                    // Maximum think time between actions (seconds)
-const BROWSE_JOURNEY_PERCENTAGE = 0.6;       // Percentage of users doing browse & purchase journey (60% - hits category + product)
-const SEARCH_JOURNEY_PERCENTAGE = 0.25;      // Percentage of users doing search & purchase journey (25% - hits product)
-const CART_JOURNEY_PERCENTAGE = 0.1;         // Percentage of users doing cart abandonment journey (10% - hits product)
-const WINDOW_SHOPPING_PERCENTAGE = 0.05;     // Percentage of users just browsing without buying (5% - minimal)
-const QUICK_BUYER_PERCENTAGE = 0.0;          // Percentage of users who buy immediately (0% - disabled)
+// Performance thresholds
+const HTTP_ERROR_THRESHOLD = getConfig('performance.httpErrorThreshold', 0.25);
+const HTTP_DURATION_THRESHOLD = getConfig('performance.httpDurationThreshold', 60000);
+const HOMEPAGE_DURATION_THRESHOLD = getConfig('performance.homepageDurationThreshold', 45000);
+const PRODUCT_DURATION_THRESHOLD = getConfig('performance.productDurationThreshold', 50000);
+const CATEGORY_DURATION_THRESHOLD = getConfig('performance.categoryDurationThreshold', 50000);
+const SEARCH_DURATION_THRESHOLD = getConfig('performance.searchDurationThreshold', 45000);
+const CART_DURATION_THRESHOLD = getConfig('performance.cartDurationThreshold', 45000);
+
+// User behavior simulation
+const MIN_THINK_TIME = getConfig('userBehavior.minThinkTime', 1);
+const MAX_THINK_TIME = getConfig('userBehavior.maxThinkTime', 4);
+const BROWSE_JOURNEY_PERCENTAGE = getConfig('userBehavior.browseJourneyPercentage', 0.4);
+const SEARCH_JOURNEY_PERCENTAGE = getConfig('userBehavior.searchJourneyPercentage', 0.2);
+const CART_JOURNEY_PERCENTAGE = getConfig('userBehavior.cartJourneyPercentage', 0.1);
+const WINDOW_SHOPPING_PERCENTAGE = getConfig('userBehavior.windowShoppingPercentage', 0.05);
+const QUICK_BUYER_PERCENTAGE = getConfig('userBehavior.quickBuyerPercentage', 0.05);
+const COMPREHENSIVE_SHOPPING_PERCENTAGE = getConfig('userBehavior.comprehensiveShoppingPercentage', 0.2);
+
+// Enhanced e-commerce flow parameters
+const MAX_CATEGORIES_PER_SESSION = getConfig('ecommerceFlow.maxCategoriesPerSession', 3);
+const MAX_PRODUCTS_PER_CATEGORY = getConfig('ecommerceFlow.maxProductsPerCategory', 4);
+const MAX_PRODUCTS_IN_CART = getConfig('ecommerceFlow.maxProductsInCart', 5);
+const CHECKOUT_COMPLETION_RATE = getConfig('ecommerceFlow.checkoutCompletionRate', 0.7);
+const CATEGORY_RETURN_RATE = getConfig('ecommerceFlow.categoryReturnRate', 0.6);
+const PRODUCT_COMPARISON_RATE = getConfig('ecommerceFlow.productComparisonRate', 0.4);
+const ADD_TO_CART_MIN_QTY = getConfig('ecommerceFlow.addToCartMinQty', 1);
+const ADD_TO_CART_MAX_QTY = getConfig('ecommerceFlow.addToCartMaxQty', 3);
 
 // HTTP headers
-const USER_AGENT = 'k6-load-test/1.0 (https://k6.io)';
+// Realistic browser simulation - Random user agents
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+];
+const USER_AGENT = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 const ACCEPT_LANGUAGE = 'en-US,en;q=0.5';
 
-// Limits for discovered data (set to 0 for no limit)
-const MAX_PRODUCTS = 500;                    // Max product URLs to use
-const MAX_CATEGORIES = 50;                   // Max category URLs to use
-const MAX_SEARCH_TERMS = 20;                 // Max search terms to use
+// URL discovery configuration
+const MAX_PRODUCTS = getConfig('urlDiscovery.maxProducts', 500);
+const MAX_CATEGORIES = getConfig('urlDiscovery.maxCategories', 50);
+const MAX_SEARCH_TERMS = getConfig('urlDiscovery.maxSearchTerms', 20);
+const EXCLUDED_URL_SUBSTRINGS = ['/admin', '/checkout', '/customer', '/catalogsearch', '/contact', '/privacy', '/terms', '/noroute'];
+const ENABLE_URL_DISCOVERY = getConfig('urlDiscovery.enableUrlDiscovery', true);
+const ENABLE_FALLBACK_URLS = getConfig('urlDiscovery.enableFallbackUrls', true);
+const ENABLE_DEEP_CRAWLING = getConfig('urlDiscovery.enableDeepCrawling', false);
+const MAX_CRAWL_DEPTH = getConfig('urlDiscovery.maxCrawlDepth', 1);
+const VALIDATE_URLS_BEFORE_USE = getConfig('urlDiscovery.validateUrlsBeforeUse', false);
 
-// URL discovery behavior
-const EXCLUDED_URL_SUBSTRINGS = ['/admin', '/checkout', '/customer', '/catalogsearch', '/contact', '/privacy', '/terms'];
-const ENABLE_URL_DISCOVERY = true;           // Enable URL discovery to find real category URLs
-const ENABLE_FALLBACK_URLS = true;           // If discovery finds none, use fallbacks
-const FALLBACK_PRODUCT_COUNT = 50;           // Number of fallback products to synthesize if enabled
-const FALLBACK_CATEGORY_SLUGS = ['category-4', 'category-5', 'category-6', 'category-7', 'category-8', 'category-9', 'category-10', 'category-11', 'category-12', 'category-13', 'category-14', 'category-15', 'category-16', 'category-17', 'category-18', 'category-19', 'category-20'];
-const FALLBACK_SEARCH_TERMS = ['shirt', 'pants', 'shoes', 'bag', 'watch', 'dress', 'jacket', 'hat', 'belt', 'socks'];
+// Real URLs from configuration
+const FALLBACK_CATEGORY_SLUGS = getConfig('realUrls.fallbackCategorySlugs', ['category-4', 'category-5', 'gear', 'training', 'collections/yoga-new']);
+const REAL_PRODUCT_URLS = getConfig('realUrls.realProductUrls', [
+  'radiant-tee.html',
+  'breathe-easy-tank.html',
+  'argus-all-weather-tank.html',
+  'hero-hoodie.html',
+  'fusion-backpack.html',
+  'push-it-messenger-bag.html',
+  'sprite-yoga-companion-kit.html',
+  'affirm-water-bottle.html',
+  'quest-lumaflex-tone-band.html',
+  'fitbit-charge-3.html'
+]);
+const FALLBACK_SEARCH_TERMS = getConfig('realUrls.fallbackSearchTerms', ['shirt', 'pants', 'shoes', 'bag', 'watch', 'dress', 'jacket', 'hat', 'belt', 'socks']);
 const DEFAULT_SEARCH_TERM = 'shirt';
 
-// Add-to-cart quantities
-const ADD_TO_CART_MIN_QTY = 1;
-const ADD_TO_CART_MAX_QTY = 15;
-
 // Storefront paths
-const CART_PAGE_PATH = '/checkout/cart/';
-const CHECKOUT_PAGE_PATH = '/checkout/onepage/';
-const ADD_TO_CART_PATH = '/checkout/cart/add/';
-const SEARCH_RESULT_PATH_TEMPLATE = '/catalogsearch/result/?q={q}';
+const CART_PAGE_PATH = getConfig('paths.cartPagePath', '/checkout/cart/');
+const CHECKOUT_PAGE_PATH = getConfig('paths.checkoutPagePath', '/checkout/onepage/');
+const ADD_TO_CART_PATH = getConfig('paths.addToCartPath', '/checkout/cart/add/');
+const SEARCH_RESULT_PATH_TEMPLATE = getConfig('paths.searchResultPathTemplate', '/catalogsearch/result/?q={q}');
+const GRAPHQL_PATH = getConfig('paths.graphqlPath', '/graphql');
 
 // API traffic configuration
-const ENABLE_API_LOAD = true;                 // Enable API (REST/GraphQL) traffic
-const ENABLE_GRAPHQL_LOAD = true;             // Enable GraphQL calls
-const ENABLE_REST_LOAD = true;                // Enable REST calls
-const API_TRAFFIC_PERCENTAGE = 0.3;           // Fraction of iterations that include API traffic (e.g., 0.2 = 20%)
-
-// GraphQL config
-const GRAPHQL_PATH = '/graphql';
-const GRAPHQL_SEARCH_PAGE_SIZE = 5;
+const ENABLE_API_LOAD = getConfig('api.enableApiLoad', true);
+const ENABLE_GRAPHQL_LOAD = getConfig('api.enableGraphqlLoad', true);
+const ENABLE_REST_LOAD = getConfig('api.enableRestLoad', true);
+const API_TRAFFIC_PERCENTAGE = getConfig('api.apiTrafficPercentage', 0.3);
+const GRAPHQL_SEARCH_PAGE_SIZE = getConfig('api.graphqlSearchPageSize', 5);
 
 // REST config
 const REST_STORE_CODE = 'default';
@@ -111,8 +166,8 @@ const REST_ENDPOINTS_BROWSE = [`${REST_API_PREFIX}/store/storeViews`];
 const REST_ENDPOINTS_CART = [`${REST_API_PREFIX}/directory/countries`];
 
 // Cache bypass configuration
-const CACHE_BYPASS_PERCENTAGE = 0.3;            // Percentage of requests that bypass cache (30% for better New Relic visibility)
-const ENABLE_CACHE_BYPASS = true;                // Enable cache bypass functionality
+const CACHE_BYPASS_PERCENTAGE = getConfig('cache.cacheBypassPercentage', 0.3);
+const ENABLE_CACHE_BYPASS = getConfig('cache.enableCacheBypass', true);
 
 // =============================================================================
 
@@ -162,95 +217,146 @@ export const options = {
 
 // The setup function runs once before the test starts.
 // It discovers real URLs from your Magento site with Medium profile data.
-export function setup() {
-  if (!ENABLE_URL_DISCOVERY) {
-    console.log('Running setup... URL discovery disabled, using fallback URLs only.');
-    return generateFallbackUrls();
-  }
+// Helper function to validate if a URL exists
+function validateUrl(url) {
+  if (!VALIDATE_URLS_BEFORE_USE) return true;
   
-  console.log('Running setup... Discovering real URLs from your Magento site.');
-  
-  const params = { 
-    headers: { 'User-Agent': USER_AGENT },
-    timeout: '10s' // Short timeout for setup
-  };
-  
-  let res;
   try {
-    res = http.get(BASE_URL, params);
-    check(res, { 'Homepage loaded successfully': (r) => r.status >= 200 && r.status < 400 });
-  } catch (error) {
-    console.log('Setup: Homepage request failed or timed out, using fallback URLs only');
-    res = null;
+    const res = http.get(url, { 
+      headers: { 'User-Agent': USER_AGENT },
+      timeout: '5s'
+    });
+    return res.status >= 200 && res.status < 400;
+  } catch (e) {
+    return false;
   }
+}
 
+// Helper function to crawl a page and extract URLs
+function crawlPage(url, depth = 0) {
+  if (depth > MAX_CRAWL_DEPTH) return { products: [], categories: [], searchTerms: [] };
+  
   const productUrls = [];
   const categoryUrls = [];
   const searchTerms = [];
-
-  if (res && res.body) {
-    try {
-      const doc = res.html();
-      
-      // Extract real product URLs from homepage (support absolute and relative hrefs)
-      doc.find('a[href*=".html"]').each((i, el) => {
-        try {
-          let href = el.attr('href');
-          if (!href) return;
-          // Normalize relative URLs to absolute
-          if (href.startsWith('/')) {
-            href = `${BASE_URL}${href}`;
-          }
-          if (href.includes('.html') && href.startsWith(BASE_URL)) {
-            // Skip admin, checkout, and other non-catalog URLs
-            if (!EXCLUDED_URL_SUBSTRINGS.some(s => href.includes(s))) {
-              
-              // Categorize URLs based on common Magento patterns
-              if (href.includes('/category') || href.includes('/women') || href.includes('/men') || 
-                  href.includes('/gear') || href.includes('/training') || href.includes('/electronics')) {
-                if (categoryUrls.indexOf(href) === -1) categoryUrls.push(href);
-              } else {
-                if (productUrls.indexOf(href) === -1) productUrls.push(href);
-              }
-            }
-          }
-        } catch (e) {
-          // Skip problematic elements
+  
+  try {
+    const res = http.get(url, { 
+      headers: { 'User-Agent': USER_AGENT },
+      timeout: '10s'
+    });
+    
+    if (!res.body) return { products: [], categories: [], searchTerms: [] };
+    
+    const doc = res.html();
+    
+    // Extract URLs from page
+    doc.find('a[href*=".html"]').each((i, el) => {
+      try {
+        let href = el.attr('href');
+        if (!href) return;
+        
+        // Normalize relative URLs to absolute
+        if (href.startsWith('/')) {
+          href = `${BASE_URL}${href}`;
         }
-      });
-
-      // Extract search terms from product names and categories
-      doc.find('a[href*=".html"]').each((i, el) => {
-        try {
-          const text = el.text().trim();
-          if (text && text.length > 2 && text.length < 20 && !text.includes('http')) {
-            if (searchTerms.indexOf(text.toLowerCase()) === -1) {
-              searchTerms.push(text.toLowerCase());
-            }
-          }
-        } catch (e) {
-          // Skip problematic elements
+        
+        if (href.includes('.html') && href.startsWith(BASE_URL)) {
+          // Skip excluded URLs
+          if (EXCLUDED_URL_SUBSTRINGS.some(s => href.includes(s))) return;
+          
+          // Validate URL exists (quick check)
+          if (!validateUrl(href)) return;
+          
+          // Categorize URLs - Enhanced pattern matching for real Magento URLs
+          if (href.includes('/category') || href.includes('/women') || href.includes('/men') ||
+              href.includes('/gear') || href.includes('/training') || href.includes('/electronics') ||
+              href.includes('/collections') || href.includes('/training/') || href.includes('/gear/')) {
+            if (categoryUrls.indexOf(href) === -1) categoryUrls.push(href);
+          } else if (href.includes('.html') && !href.includes('/category') && 
+                     !href.includes('/admin') && !href.includes('/checkout') && 
+                     !href.includes('/customer') && !href.includes('/contact')) {
+            // This is likely a product URL
+            if (productUrls.indexOf(href) === -1) productUrls.push(href);
         }
-      });
+        }
+      } catch (e) {
+        // Skip problematic elements
+      }
+    });
+    
+    // Extract search terms from text content
+    doc.find('a[href*=".html"]').each((i, el) => {
+      try {
+        const text = el.text().trim();
+        if (text && text.length > 2 && text.length < 20 && !text.includes('http')) {
+          if (searchTerms.indexOf(text.toLowerCase()) === -1) {
+            searchTerms.push(text.toLowerCase());
+          }
+        }
+      } catch (e) {
+        // Skip problematic elements
+      }
+    });
+    
+  } catch (e) {
+    console.log(`Failed to crawl ${url}: ${e.message}`);
+  }
+  
+  return { products: productUrls, categories: categoryUrls, searchTerms: searchTerms };
+}
 
-    } catch (e) {
-      console.log('HTML parsing failed, using fallback URLs');
-    }
-  } else {
-    console.log('No homepage response received, using fallback URLs only');
+export function setup() {
+  if (!ENABLE_URL_DISCOVERY) {
+    console.log('Running setup... URL discovery disabled.');
+    return { products: [], categories: [], searchTerms: FALLBACK_SEARCH_TERMS };
   }
 
-  // Use fallback URLs if discovery failed or found nothing
-  if (ENABLE_FALLBACK_URLS && (productUrls.length === 0 || categoryUrls.length === 0 || searchTerms.length === 0)) {
+  console.log('Running setup... Discovering real URLs from your Magento site with enhanced crawling.');
+
+  const allProductUrls = [];
+  const allCategoryUrls = [];
+  const allSearchTerms = [];
+
+  // Start with homepage
+  const homepageData = crawlPage(BASE_URL, 0);
+  allProductUrls.push(...homepageData.products);
+  allCategoryUrls.push(...homepageData.categories);
+  allSearchTerms.push(...homepageData.searchTerms);
+
+  // If deep crawling is enabled, crawl some category pages
+  if (ENABLE_DEEP_CRAWLING && allCategoryUrls.length > 0) {
+    console.log(`Deep crawling ${Math.min(5, allCategoryUrls.length)} category pages...`);
+    
+    // Crawl first few category pages to find more products
+    const categoriesToCrawl = allCategoryUrls.slice(0, Math.min(5, allCategoryUrls.length));
+    categoriesToCrawl.forEach(categoryUrl => {
+      const categoryData = crawlPage(categoryUrl, 1);
+      allProductUrls.push(...categoryData.products);
+      allSearchTerms.push(...categoryData.searchTerms);
+    });
+  }
+
+  // Remove duplicates
+  const uniqueProducts = [...new Set(allProductUrls)];
+  const uniqueCategories = [...new Set(allCategoryUrls)];
+  const uniqueSearchTerms = [...new Set(allSearchTerms)];
+
+  // Use fallback URLs if discovery found nothing or very few URLs
+  if (uniqueProducts.length === 0 || uniqueCategories.length === 0) {
     console.log('Using fallback URLs due to failed discovery or empty results');
     return generateFallbackUrls();
   }
 
-  console.log(`Setup complete. Found ${productUrls.length} product URLs, ${categoryUrls.length} category URLs, and ${searchTerms.length} search terms.`);
-  return { 
-    products: limit(productUrls, MAX_PRODUCTS),
-    categories: limit(categoryUrls, MAX_CATEGORIES),
-    searchTerms: limit(searchTerms, MAX_SEARCH_TERMS)
+  // Use fallback search terms if none found
+  const finalSearchTerms = uniqueSearchTerms.length > 0 ? uniqueSearchTerms : FALLBACK_SEARCH_TERMS;
+
+  console.log(`Setup complete. Found ${uniqueProducts.length} product URLs, ${uniqueCategories.length} category URLs, and ${finalSearchTerms.length} search terms.`);
+  
+  return {
+    products: limit(uniqueProducts, MAX_PRODUCTS),
+    categories: limit(uniqueCategories, MAX_CATEGORIES),
+    searchTerms: limit(finalSearchTerms, MAX_SEARCH_TERMS)
   };
 }
 
@@ -338,19 +444,18 @@ function limit(arr, max) {
   return max > 0 ? arr.slice(0, max) : arr;
 }
 
-// Helper to generate fallback URLs
+// Helper to generate fallback URLs with real URLs from your site
 function generateFallbackUrls() {
   const productUrls = [];
   const categoryUrls = [];
   const searchTerms = [...FALLBACK_SEARCH_TERMS];
   
-  // Generate fallback product URLs
-  for (let i = 1; i <= FALLBACK_PRODUCT_COUNT; i++) {
-    productUrls.push(`${BASE_URL}/simple-product-${i}.html`);
-    productUrls.push(`${BASE_URL}/configurable-product-${i}.html`);
-  }
+  // Use real product URLs from your site
+  REAL_PRODUCT_URLS.forEach(product => {
+    productUrls.push(`${BASE_URL}/${product}`);
+  });
   
-  // Generate fallback category URLs
+  // Generate fallback category URLs with real categories
   FALLBACK_CATEGORY_SLUGS.forEach(slug => {
     categoryUrls.push(`${BASE_URL}/${slug}.html`);
   });
@@ -393,6 +498,17 @@ function getHttpParams(bypassCache = false) {
 
 // The default function is the main loop for each virtual user.
 export default function (data) {
+  // Skip if no URLs were discovered (prevents 404s)
+  if (!data.products || data.products.length === 0) {
+    console.log('No product URLs available, skipping this iteration');
+    return;
+  }
+  
+  if (!data.categories || data.categories.length === 0) {
+    console.log('No category URLs available, skipping this iteration');
+    return;
+  }
+
   // Determine if this request should bypass cache
   const bypassCache = shouldBypassCache();
   const params = getHttpParams(bypassCache);
@@ -401,7 +517,10 @@ export default function (data) {
   const userJourney = Math.random();
   const includeApi = ENABLE_API_LOAD && Math.random() < API_TRAFFIC_PERCENTAGE;
   
-  if (userJourney < BROWSE_JOURNEY_PERCENTAGE) {
+  if (userJourney < COMPREHENSIVE_SHOPPING_PERCENTAGE) {
+    // NEW: Comprehensive Shopping Journey - Multi-category browsing with product comparison
+    comprehensiveShoppingJourney(data, params, includeApi);
+  } else if (userJourney < COMPREHENSIVE_SHOPPING_PERCENTAGE + BROWSE_JOURNEY_PERCENTAGE) {
     // Browse journey: Homepage -> Category -> Product -> Add to Cart
     group('Browse & Purchase Journey', function () {
       // Visit homepage
@@ -414,12 +533,12 @@ export default function (data) {
       sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
 
       // Visit category page
-      group('Visit Category Page (catalog/category/view)', function () {
-        const categoryUrl = data.categories[Math.floor(Math.random() * data.categories.length)];
-        const res = http.get(categoryUrl, params);
+  group('Visit Category Page (catalog/category/view)', function () {
+    const categoryUrl = data.categories[Math.floor(Math.random() * data.categories.length)];
+    const res = http.get(categoryUrl, params);
         check(res, { 'Category page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-        categoryPageTrend.add(res.timings.duration);
-      });
+    categoryPageTrend.add(res.timings.duration);
+  });
 
       sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
 
@@ -491,7 +610,7 @@ export default function (data) {
         });
       }
     });
-  } else if (userJourney < BROWSE_JOURNEY_PERCENTAGE + SEARCH_JOURNEY_PERCENTAGE) {
+  } else if (userJourney < COMPREHENSIVE_SHOPPING_PERCENTAGE + BROWSE_JOURNEY_PERCENTAGE + SEARCH_JOURNEY_PERCENTAGE) {
     // Search journey: Homepage -> Search -> Product -> Add to Cart
     group('Search & Purchase Journey', function () {
       // Visit homepage
@@ -584,7 +703,7 @@ export default function (data) {
         });
       }
     });
-  } else {
+  } else if (userJourney < COMPREHENSIVE_SHOPPING_PERCENTAGE + BROWSE_JOURNEY_PERCENTAGE + SEARCH_JOURNEY_PERCENTAGE + CART_JOURNEY_PERCENTAGE) {
     // Cart abandonment journey: Homepage -> Product -> Add to Cart -> Cart -> Abandon
     group('Cart Abandonment Journey', function () {
       // Visit homepage
@@ -597,11 +716,11 @@ export default function (data) {
       sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
 
       // Visit product page
-      group('Visit Product Page (catalog/product/view)', function () {
-        const productUrl = data.products[Math.floor(Math.random() * data.products.length)];
-        const res = http.get(productUrl, params);
+  group('Visit Product Page (catalog/product/view)', function () {
+    const productUrl = data.products[Math.floor(Math.random() * data.products.length)];
+    const res = http.get(productUrl, params);
         check(res, { 'Product page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-        productPageTrend.add(res.timings.duration);
+    productPageTrend.add(res.timings.duration);
         
         // Extract form key and product info for add to cart
         const formKey = extractFormKey(res.body);
@@ -667,7 +786,282 @@ export default function (data) {
         }
       });
     });
+  } else if (userJourney < COMPREHENSIVE_SHOPPING_PERCENTAGE + BROWSE_JOURNEY_PERCENTAGE + SEARCH_JOURNEY_PERCENTAGE + CART_JOURNEY_PERCENTAGE + WINDOW_SHOPPING_PERCENTAGE) {
+    // Window shopping journey: Browse multiple categories and products without purchasing
+    windowShoppingJourney(data, params, includeApi);
+  } else {
+    // Quick buyer journey: Direct to product and purchase
+    quickBuyerJourney(data, params, includeApi);
   }
 
   sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME); // Configurable think time
+}
+
+// =============================================================================
+// ENHANCED USER JOURNEY IMPLEMENTATIONS
+// =============================================================================
+
+// Comprehensive Shopping Journey - Multi-category browsing with product comparison
+function comprehensiveShoppingJourney(data, params, includeApi) {
+  group('Comprehensive Shopping Journey', function () {
+    const itemsInCart = [];
+    let formKey = null;
+    
+    // Start at homepage
+    group('Visit Homepage', function () {
+      const res = http.get(BASE_URL, params);
+      check(res, { 'Homepage status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+      homepageTrend.add(res.timings.duration);
+      formKey = extractFormKey(res.body);
+    });
+
+    sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
+
+    // Browse multiple categories
+    const categoriesToVisit = Math.min(MAX_CATEGORIES_PER_SESSION, Math.floor(Math.random() * 2) + 2); // 2-3 categories
+    const visitedCategories = [];
+
+    for (let catIndex = 0; catIndex < categoriesToVisit; catIndex++) {
+      const categoryUrl = data.categories[Math.floor(Math.random() * data.categories.length)];
+      if (visitedCategories.includes(categoryUrl)) continue; // Skip if already visited
+      visitedCategories.push(categoryUrl);
+
+      group(`Visit Category ${catIndex + 1}`, function () {
+        const res = http.get(categoryUrl, params);
+        check(res, { 'Category page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+        categoryPageTrend.add(res.timings.duration);
+      });
+
+      sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
+
+      // Browse products in this category
+      const productsToView = Math.min(MAX_PRODUCTS_PER_CATEGORY, Math.floor(Math.random() * 3) + 1); // 1-3 products per category
+      
+      for (let prodIndex = 0; prodIndex < productsToView; prodIndex++) {
+        group(`View Product ${prodIndex + 1} in Category ${catIndex + 1}`, function () {
+          const productUrl = data.products[Math.floor(Math.random() * data.products.length)];
+          const res = http.get(productUrl, params);
+          check(res, { 'Product page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+          productPageTrend.add(res.timings.duration);
+
+          // Extract product info
+          if (!formKey) formKey = extractFormKey(res.body);
+          const { productId, requiresOptions } = extractProductInfo(res.body);
+
+          // Decide whether to add to cart (not every product)
+          const shouldAddToCart = Math.random() < 0.4 && formKey && productId && !requiresOptions && itemsInCart.length < MAX_PRODUCTS_IN_CART;
+          
+          if (shouldAddToCart) {
+            sleep(Math.random() * 2 + 1); // Think time before adding to cart
+
+            group('Add to Cart', function () {
+              const addToCartParams = {
+                ...params,
+                headers: {
+                  ...params.headers,
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                  'X-Requested-With': 'XMLHttpRequest',
+                },
+              };
+
+              const qty = Math.floor(Math.random() * (ADD_TO_CART_MAX_QTY - ADD_TO_CART_MIN_QTY + 1)) + ADD_TO_CART_MIN_QTY;
+              const addToCartData = {
+                'product': productId,
+                'form_key': formKey,
+                'qty': qty,
+              };
+
+              const addToCartRes = http.post(`${BASE_URL}${ADD_TO_CART_PATH}`, addToCartData, addToCartParams);
+              check(addToCartRes, { 'Add to cart status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+              addToCartTrend.add(addToCartRes.timings.duration);
+              
+              if (addToCartRes.status >= 200 && addToCartRes.status < 400) {
+                itemsInCart.push({ productId, qty });
+              }
+            });
+          }
+        });
+
+        sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
+      }
+
+      // Sometimes return to previous category (simulate comparison shopping)
+      if (catIndex > 0 && Math.random() < CATEGORY_RETURN_RATE) {
+        group(`Return to Previous Category`, function () {
+          const previousCategoryUrl = visitedCategories[Math.floor(Math.random() * visitedCategories.length)];
+          const res = http.get(previousCategoryUrl, params);
+          check(res, { 'Return to category status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+          categoryPageTrend.add(res.timings.duration);
+        });
+
+        sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
+      }
+    }
+
+    // If items in cart, proceed to cart and potentially checkout
+    if (itemsInCart.length > 0) {
+      group('Visit Cart Page', function () {
+        const cartUrl = `${BASE_URL}${CART_PAGE_PATH}`;
+        const res = http.get(cartUrl, params);
+        check(res, { 'Cart page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+        cartTrend.add(res.timings.duration);
+      });
+
+      sleep(Math.random() * 3 + 2); // Longer think time in cart
+
+      // Complete checkout based on completion rate
+      if (Math.random() < CHECKOUT_COMPLETION_RATE) {
+        group('Complete Checkout', function () {
+          const checkoutUrl = `${BASE_URL}${CHECKOUT_PAGE_PATH}`;
+          const res = http.get(checkoutUrl, params);
+          check(res, { 'Checkout page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+          checkoutTrend.add(res.timings.duration);
+        });
+      }
+    }
+
+    // Include API calls if enabled
+    if (includeApi) {
+      sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
+      group('API Load - Comprehensive Journey', function () {
+        if (ENABLE_GRAPHQL_LOAD) {
+          const q = `query ($search: String!){ products(search: $search, pageSize: ${GRAPHQL_SEARCH_PAGE_SIZE}){ items { sku name } } }`;
+          const gRes = graphqlQuery(q, { search: data.searchTerms[0] || 'shirt' });
+          check(gRes, { 'GraphQL 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+          graphqlTrend.add(gRes.timings.duration);
+        }
+        if (ENABLE_REST_LOAD) {
+          const r1 = restGet('/rest/default/V1/store/storeViews');
+          if (r1.status !== 401 && r1.status !== 403) {
+            check(r1, { 'REST storeViews 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+          }
+          restTrend.add(r1.timings.duration);
+        }
+      });
+    }
+  });
+}
+
+// Window Shopping Journey - Browse multiple categories and products without purchasing
+function windowShoppingJourney(data, params, includeApi) {
+  group('Window Shopping Journey', function () {
+    // Start at homepage
+    group('Visit Homepage', function () {
+      const res = http.get(BASE_URL, params);
+      check(res, { 'Homepage status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+      homepageTrend.add(res.timings.duration);
+    });
+
+    sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
+
+    // Browse multiple categories and products without buying
+    const categoriesToBrowse = Math.floor(Math.random() * 3) + 2; // 2-4 categories
+    
+    for (let i = 0; i < categoriesToBrowse; i++) {
+      group(`Browse Category ${i + 1}`, function () {
+        const categoryUrl = data.categories[Math.floor(Math.random() * data.categories.length)];
+        const res = http.get(categoryUrl, params);
+        check(res, { 'Category page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+        categoryPageTrend.add(res.timings.duration);
+      });
+
+      sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
+
+      // View some products
+      const productsToView = Math.floor(Math.random() * 2) + 1; // 1-2 products
+      for (let j = 0; j < productsToView; j++) {
+        group(`View Product ${j + 1}`, function () {
+          const productUrl = data.products[Math.floor(Math.random() * data.products.length)];
+          const res = http.get(productUrl, params);
+          check(res, { 'Product page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+          productPageTrend.add(res.timings.duration);
+        });
+
+        sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
+      }
+    }
+
+    // Sometimes do a search
+    if (Math.random() < 0.5) {
+      group('Perform Search', function () {
+        const searchTerm = data.searchTerms[Math.floor(Math.random() * data.searchTerms.length)];
+        const searchUrl = `${BASE_URL}${SEARCH_RESULT_PATH_TEMPLATE.replace('{q}', encodeURIComponent(searchTerm))}`;
+        const res = http.get(searchUrl, params);
+        check(res, { 'Search page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+        searchTrend.add(res.timings.duration);
+      });
+    }
+  });
+}
+
+// Quick Buyer Journey - Direct to product and purchase
+function quickBuyerJourney(data, params, includeApi) {
+  group('Quick Buyer Journey', function () {
+    // Start at homepage briefly
+    group('Visit Homepage', function () {
+      const res = http.get(BASE_URL, params);
+      check(res, { 'Homepage status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+      homepageTrend.add(res.timings.duration);
+    });
+
+    sleep(Math.random() * 2 + 1); // Shorter think time
+
+    // Go directly to a product
+    group('Visit Product Page', function () {
+      const productUrl = data.products[Math.floor(Math.random() * data.products.length)];
+      const res = http.get(productUrl, params);
+      check(res, { 'Product page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+      productPageTrend.add(res.timings.duration);
+
+      // Extract form key and product info for add to cart
+      const formKey = extractFormKey(res.body);
+      const { productId, requiresOptions } = extractProductInfo(res.body);
+
+      if (formKey && productId && !requiresOptions) {
+        sleep(Math.random() * 1 + 1); // Quick decision
+
+        // Add to cart
+        group('Add to Cart', function () {
+          const addToCartParams = {
+            ...params,
+            headers: {
+              ...params.headers,
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+          };
+
+          const addToCartData = {
+            'product': productId,
+            'form_key': formKey,
+            'qty': 1, // Quick buyers usually buy just 1
+          };
+
+          const addToCartRes = http.post(`${BASE_URL}${ADD_TO_CART_PATH}`, addToCartData, addToCartParams);
+          check(addToCartRes, { 'Add to cart status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+          addToCartTrend.add(addToCartRes.timings.duration);
+        });
+
+        sleep(Math.random() * 1 + 1); // Quick transition
+
+        // Go to cart
+        group('Visit Cart Page', function () {
+          const cartUrl = `${BASE_URL}${CART_PAGE_PATH}`;
+          const res = http.get(cartUrl, params);
+          check(res, { 'Cart page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+          cartTrend.add(res.timings.duration);
+        });
+
+        sleep(Math.random() * 1 + 1); // Quick decision
+
+        // Quick checkout
+        group('Quick Checkout', function () {
+          const checkoutUrl = `${BASE_URL}${CHECKOUT_PAGE_PATH}`;
+          const res = http.get(checkoutUrl, params);
+          check(res, { 'Checkout page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+          checkoutTrend.add(res.timings.duration);
+        });
+      }
+    });
+  });
 }
