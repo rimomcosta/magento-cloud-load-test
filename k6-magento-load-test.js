@@ -241,15 +241,22 @@ const ADD_TO_CART_PATH = getConfig('paths.addToCartPath', '/checkout/cart/add/')
 const SEARCH_RESULT_PATH_TEMPLATE = getConfig('paths.searchResultPathTemplate', '/catalogsearch/result/?q={q}');
 const GRAPHQL_PATH = getConfig('paths.graphqlPath', '/graphql');
 
-// Additional Magento areas
+// Customer account paths
 const CUSTOMER_ACCOUNT_PATH = getConfig('paths.customerAccountPath', '/customer/account/');
 const CUSTOMER_LOGIN_PATH = getConfig('paths.customerLoginPath', '/customer/account/login/');
 const CUSTOMER_REGISTER_PATH = getConfig('paths.customerRegisterPath', '/customer/account/create/');
-const WISHLIST_PATH = getConfig('paths.wishlistPath', '/wishlist/');
-const COMPARE_PRODUCTS_PATH = getConfig('paths.compareProductsPath', '/catalog/product_compare/');
-const CONTACT_US_PATH = getConfig('paths.contactUsPath', '/contact/');
-const ABOUT_US_PATH = getConfig('paths.aboutUsPath', '/about-us/');
-const SITEMAP_PATH = getConfig('paths.sitemapPath', '/sitemap/');
+const CUSTOMER_DASHBOARD_PATH = getConfig('paths.customerDashboardPath', '/customer/account/index/');
+const ORDER_HISTORY_PATH = getConfig('paths.orderHistoryPath', '/sales/order/history/');
+const ADDRESS_BOOK_PATH = getConfig('paths.addressBookPath', '/customer/address/');
+
+// Customer account configuration
+const CUSTOMER_REGISTRATION_RATE = getConfig('customerAccounts.registrationRate', 0.1);
+const REGISTERED_USER_CHECKOUT_RATE = getConfig('customerAccounts.registeredUserCheckoutRate', 0.5);
+const USER_PREFIX = getConfig('customerAccounts.userPrefix', 'load_test_user_');
+const ACCOUNT_DASHBOARD_VISIT_RATE = getConfig('customerAccounts.accountDashboardVisitRate', 0.8);
+const ORDER_HISTORY_CHECK_RATE = getConfig('customerAccounts.orderHistoryCheckRate', 0.6);
+const ADDRESS_BOOK_ACCESS_RATE = getConfig('customerAccounts.addressBookAccessRate', 0.4);
+const ACCOUNT_INFO_UPDATE_RATE = getConfig('customerAccounts.accountInfoUpdateRate', 0.2);
 
 // AJAX endpoints
 const AJAX_ADD_TO_CART_PATH = getConfig('paths.ajaxAddToCartPath', '/checkout/cart/add/uenc/');
@@ -1271,6 +1278,140 @@ class RealUserSession {
     
     return success;
   }
+
+  // Generate unique customer data for registration
+  generateCustomerData() {
+    const timestamp = Date.now();
+    const randomNum = Math.floor(Math.random() * 9999).toString().padStart(4, '0');
+    const username = `${USER_PREFIX}${timestamp}_${randomNum}`;
+    
+    return {
+      firstname: 'LoadTest',
+      lastname: `User${randomNum}`,
+      email: `${username}@loadtest.example.com`,
+      password: 'LoadTest123!',
+      password_confirmation: 'LoadTest123!',
+      username: username
+    };
+  }
+
+  // Register a new customer account
+  registerCustomer() {
+    if (this.isLoggedIn) return true; // Already logged in
+    
+    const customerData = this.generateCustomerData();
+    
+    // First visit registration page to get form key
+    group('Visit Registration Page', () => {
+      const regPageResult = this.visitPage(`${BASE_URL}${CUSTOMER_REGISTER_PATH}`, 'customer_register');
+      if (!regPageResult || !regPageResult.success) return false;
+    });
+    
+    sleep(Math.random() * 2 + 1); // Think time to fill form
+    
+    // Submit registration
+    const registerParams = {
+      ...this.params,
+      jar: this.cookieJar,
+      headers: {
+        ...this.params.headers,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Referer': `${BASE_URL}${CUSTOMER_REGISTER_PATH}`,
+        ...(this.sessionId && { 'X-Session-ID': this.sessionId }),
+      },
+    };
+
+    const registerData = {
+      'form_key': this.formKey,
+      'firstname': customerData.firstname,
+      'lastname': customerData.lastname,
+      'email': customerData.email,
+      'password': customerData.password,
+      'password_confirmation': customerData.password_confirmation,
+      'create_account': '1'
+    };
+
+    const registerRes = http.post(`${BASE_URL}/customer/account/createpost/`, registerData, registerParams);
+    const success = registerRes.status >= 200 && registerRes.status < 400;
+    
+    if (success) {
+      this.isLoggedIn = true;
+      this.customerData = customerData;
+      this.updateSessionCookies(registerRes);
+      console.log(`Registered customer: ${customerData.username}`);
+    }
+    
+    return success;
+  }
+
+  // Access customer account dashboard and related pages
+  accessCustomerAccount() {
+    if (!this.isLoggedIn) return false;
+    
+    // Visit account dashboard
+    if (Math.random() < ACCOUNT_DASHBOARD_VISIT_RATE) {
+      group('Customer Dashboard', () => {
+        const dashboardResult = this.visitPage(`${BASE_URL}${CUSTOMER_DASHBOARD_PATH}`, 'customer_dashboard');
+        if (dashboardResult && dashboardResult.success) {
+          check(dashboardResult.res, { 'Customer dashboard status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+        }
+      });
+      
+      sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
+    }
+
+    // Check order history
+    if (Math.random() < ORDER_HISTORY_CHECK_RATE) {
+      group('Order History', () => {
+        const orderResult = this.visitPage(`${BASE_URL}${ORDER_HISTORY_PATH}`, 'order_history');
+        if (orderResult && orderResult.success) {
+          check(orderResult.res, { 'Order history status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+        }
+      });
+      
+      sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
+    }
+
+    // Access address book
+    if (Math.random() < ADDRESS_BOOK_ACCESS_RATE) {
+      group('Address Book', () => {
+        const addressResult = this.visitPage(`${BASE_URL}${ADDRESS_BOOK_PATH}`, 'address_book');
+        if (addressResult && addressResult.success) {
+          check(addressResult.res, { 'Address book status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+        }
+      });
+    }
+    
+    return true;
+  }
+
+  // Complete checkout flow for registered users
+  completeRegisteredUserCheckout() {
+    if (!this.isLoggedIn || this.cart.length === 0) return false;
+    
+    // Registered users have higher checkout completion rate
+    if (Math.random() < REGISTERED_USER_CHECKOUT_RATE) {
+      group('Complete Registered User Checkout', () => {
+        // Visit checkout
+        const checkoutResult = this.visitPage(`${BASE_URL}${CHECKOUT_PAGE_PATH}`, 'checkout');
+        if (checkoutResult && checkoutResult.success) {
+          check(checkoutResult.res, { 'Registered checkout status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+          checkoutTrend.add(checkoutResult.res.timings.duration);
+          this.updateSessionCookies(checkoutResult.res);
+          
+          // Simulate completing checkout steps (shipping, payment, review)
+          sleep(Math.random() * 3 + 2); // Time to fill checkout form
+          
+          // In a real implementation, you would submit the checkout form here
+          // For load testing, visiting the checkout page is sufficient to test performance
+        }
+      });
+      
+      return true;
+    }
+    
+    return false;
+  }
 }
 
 // The default function is the main loop for each virtual user.
@@ -1287,6 +1428,22 @@ export default function (data) {
 // Real User Browsing Session - simulates how actual users browse e-commerce sites
 function realUserBrowsingSession(user, fallbackData) {
   group('Real User Browsing Session', function () {
+    // PHASE 0: Customer registration (10% of users)
+    if (Math.random() < CUSTOMER_REGISTRATION_RATE) {
+      group('Customer Registration Flow', function () {
+        const registrationSuccess = user.registerCustomer();
+        check({ status: registrationSuccess ? 200 : 400 }, { 'Customer registration successful': () => registrationSuccess });
+        
+        // If registration successful, access account areas
+        if (registrationSuccess) {
+          sleep(Math.random() * 2 + 1);
+          user.accessCustomerAccount();
+        }
+      });
+      
+      sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
+    }
+
     // PHASE 1: Start at homepage and discover initial links
     group('Visit Homepage & Discover Links', function () {
       const homepageResult = user.visitPage(BASE_URL, 'homepage');
@@ -1452,12 +1609,16 @@ function realUserBrowsingSession(user, fallbackData) {
 
       sleep(Math.random() * 2 + 2); // Think time in cart
 
-      // Enhanced checkout decision
-      if (Math.random() < CHECKOUT_COMPLETION_RATE) {
-        group('Proceed to Checkout', function () {
+      // Enhanced checkout decision - different flow for registered users
+      if (user.isLoggedIn) {
+        // Registered users have enhanced checkout flow
+        user.completeRegisteredUserCheckout();
+      } else if (Math.random() < CHECKOUT_COMPLETION_RATE) {
+        // Guest checkout
+        group('Guest Checkout', function () {
           const checkoutResult = user.visitPage(`${BASE_URL}${CHECKOUT_PAGE_PATH}`, 'checkout');
           if (checkoutResult && checkoutResult.success) {
-            check(checkoutResult.res, { 'Checkout page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+            check(checkoutResult.res, { 'Guest checkout status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
             checkoutTrend.add(checkoutResult.res.timings.duration);
             user.updateSessionCookies(checkoutResult.res);
           }

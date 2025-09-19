@@ -113,3 +113,30 @@ paths:
   addToCartPath: "/checkout/cart/add/"
   searchResultPathTemplate: "/catalogsearch/result/?q={q}"
   graphqlPath: "/graphql"
+  
+  # Customer account paths
+  customerAccountPath: "/customer/account/"
+  customerLoginPath: "/customer/account/login/"
+  customerRegisterPath: "/customer/account/create/"
+  customerDashboardPath: "/customer/account/index/"
+  orderHistoryPath: "/sales/order/history/"
+  addressBookPath: "/customer/address/"
+
+# =============================================================================
+# CUSTOMER ACCOUNT SIMULATION
+# =============================================================================
+customerAccounts:
+  # Percentage of users who create accounts during load test
+  registrationRate: 0.1           # 10% of users create accounts
+  
+  # Percentage of registered users who complete full checkout
+  registeredUserCheckoutRate: 0.5 # 50% of registered users complete checkout
+  
+  # User account prefix for easy identification in admin
+  userPrefix: "load_test_user_"    # Prefix for generated usernames
+  
+  # Customer account behaviors
+  accountDashboardVisitRate: 0.8  # 80% of logged-in users visit dashboard
+  orderHistoryCheckRate: 0.6      # 60% check order history
+  addressBookAccessRate: 0.4      # 40% access address book
+  accountInfoUpdateRate: 0.2      # 20% update account information
