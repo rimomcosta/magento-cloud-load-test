@@ -1,0 +1,91 @@
+# =============================================================================
+# EXAMPLE: Custom Traffic Distribution Configuration
+# =============================================================================
+# This example shows how to adjust traffic proportions for different testing scenarios
+
+# Example 1: Heavy GraphQL Testing (for API performance testing)
+trafficDistribution:
+  # Core catalog traffic
+  homepage: 0.8                     # Reduced homepage visits
+  categoryPages: 0.6                # Reduced category browsing  
+  productPages: 0.5                 # Reduced product viewing
+  searchResults: 0.1                # Minimal search
+  
+  # Cart and checkout (moderate)
+  cartPages: 0.3                    # Moderate cart usage
+  checkoutPages: 0.2                # Moderate checkout
+  addToCartActions: 0.3             # Moderate add-to-cart
+  
+  # HEAVY API TRAFFIC FOR TESTING
+  graphqlRequests: 0.4              # 40% GraphQL traffic (heavily increased)
+  restApiRequests: 0.3              # 30% REST API traffic (heavily increased)
+  
+  # Additional areas (minimal for API focus)
+  customerAccount: 0.05
+  wishlistPages: 0.02
+  productComparison: 0.03
+  layeredNavigation: 0.1
+  cmsPages: 0.02
+  contactPages: 0.01
+  ajaxRequests: 0.1
+  mediaRequests: 0.1
+
+# Example 2: Heavy Catalog Testing (for catalog performance)
+# trafficDistribution:
+#   # HEAVY CATALOG TRAFFIC
+#   homepage: 0.95                  # Almost all users visit homepage
+#   categoryPages: 0.9              # 90% browse categories (heavily increased)
+#   productPages: 0.85              # 85% view products (heavily increased)
+#   searchResults: 0.3              # Increased search usage
+#   
+#   # Moderate cart and checkout
+#   cartPages: 0.7
+#   checkoutPages: 0.5
+#   addToCartActions: 0.6
+#   
+#   # MINIMAL API TRAFFIC
+#   graphqlRequests: 0.02           # Very low GraphQL
+#   restApiRequests: 0.02           # Very low REST
+#   
+#   # Other areas
+#   customerAccount: 0.1
+#   wishlistPages: 0.05
+#   productComparison: 0.1
+#   layeredNavigation: 0.4
+#   cmsPages: 0.05
+#   contactPages: 0.02
+#   ajaxRequests: 0.2
+#   mediaRequests: 0.3
+
+# Example 3: Checkout Flow Testing (for payment/order performance)
+# trafficDistribution:
+#   # Moderate catalog traffic
+#   homepage: 0.9
+#   categoryPages: 0.7
+#   productPages: 0.8
+#   searchResults: 0.2
+#   
+#   # HEAVY CART AND CHECKOUT TRAFFIC
+#   cartPages: 0.9                  # 90% visit cart (heavily increased)
+#   checkoutPages: 0.8              # 80% reach checkout (heavily increased)
+#   addToCartActions: 0.8           # 80% add to cart (heavily increased)
+#   
+#   # Moderate API traffic
+#   graphqlRequests: 0.1
+#   restApiRequests: 0.1
+#   
+#   # Other areas
+#   customerAccount: 0.2            # More account access for checkout
+#   wishlistPages: 0.05
+#   productComparison: 0.08
+#   layeredNavigation: 0.3
+#   cmsPages: 0.05
+#   contactPages: 0.02
+#   ajaxRequests: 0.2
+#   mediaRequests: 0.3
+
+# To use any of these examples:
+# 1. Copy the desired trafficDistribution section
+# 2. Paste it into your load-test-config.yaml file
+# 3. Adjust percentages as needed for your specific testing goals
+# 4. Run your load test: ./run-load-test.sh 100 300 https://your-site.com

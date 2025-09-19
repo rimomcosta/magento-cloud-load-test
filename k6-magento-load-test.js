@@ -241,11 +241,44 @@ const ADD_TO_CART_PATH = getConfig('paths.addToCartPath', '/checkout/cart/add/')
 const SEARCH_RESULT_PATH_TEMPLATE = getConfig('paths.searchResultPathTemplate', '/catalogsearch/result/?q={q}');
 const GRAPHQL_PATH = getConfig('paths.graphqlPath', '/graphql');
 
+// Additional Magento areas
+const CUSTOMER_ACCOUNT_PATH = getConfig('paths.customerAccountPath', '/customer/account/');
+const CUSTOMER_LOGIN_PATH = getConfig('paths.customerLoginPath', '/customer/account/login/');
+const CUSTOMER_REGISTER_PATH = getConfig('paths.customerRegisterPath', '/customer/account/create/');
+const WISHLIST_PATH = getConfig('paths.wishlistPath', '/wishlist/');
+const COMPARE_PRODUCTS_PATH = getConfig('paths.compareProductsPath', '/catalog/product_compare/');
+const CONTACT_US_PATH = getConfig('paths.contactUsPath', '/contact/');
+const ABOUT_US_PATH = getConfig('paths.aboutUsPath', '/about-us/');
+const SITEMAP_PATH = getConfig('paths.sitemapPath', '/sitemap/');
+
+// AJAX endpoints
+const AJAX_ADD_TO_CART_PATH = getConfig('paths.ajaxAddToCartPath', '/checkout/cart/add/uenc/');
+const AJAX_WISHLIST_PATH = getConfig('paths.ajaxWishlistPath', '/wishlist/index/add/');
+const AJAX_COMPARE_ADD_PATH = getConfig('paths.ajaxCompareAddPath', '/catalog/product_compare/add/');
+
+// Traffic distribution configuration - granular control over all areas
+const TRAFFIC_HOMEPAGE = getConfig('trafficDistribution.homepage', 0.95);
+const TRAFFIC_CATEGORY_PAGES = getConfig('trafficDistribution.categoryPages', 0.85);
+const TRAFFIC_PRODUCT_PAGES = getConfig('trafficDistribution.productPages', 0.75);
+const TRAFFIC_SEARCH_RESULTS = getConfig('trafficDistribution.searchResults', 0.15);
+const TRAFFIC_CART_PAGES = getConfig('trafficDistribution.cartPages', 0.6);
+const TRAFFIC_CHECKOUT_PAGES = getConfig('trafficDistribution.checkoutPages', 0.4);
+const TRAFFIC_ADD_TO_CART = getConfig('trafficDistribution.addToCartActions', 0.5);
+const TRAFFIC_GRAPHQL = getConfig('trafficDistribution.graphqlRequests', 0.05);
+const TRAFFIC_REST_API = getConfig('trafficDistribution.restApiRequests', 0.05);
+const TRAFFIC_CUSTOMER_ACCOUNT = getConfig('trafficDistribution.customerAccount', 0.1);
+const TRAFFIC_WISHLIST = getConfig('trafficDistribution.wishlistPages', 0.05);
+const TRAFFIC_PRODUCT_COMPARISON = getConfig('trafficDistribution.productComparison', 0.08);
+const TRAFFIC_LAYERED_NAV = getConfig('trafficDistribution.layeredNavigation', 0.3);
+const TRAFFIC_CMS_PAGES = getConfig('trafficDistribution.cmsPages', 0.05);
+const TRAFFIC_CONTACT_PAGES = getConfig('trafficDistribution.contactPages', 0.02);
+const TRAFFIC_AJAX_REQUESTS = getConfig('trafficDistribution.ajaxRequests', 0.2);
+const TRAFFIC_MEDIA_REQUESTS = getConfig('trafficDistribution.mediaRequests', 0.3);
+
 // API traffic configuration
 const ENABLE_API_LOAD = getConfig('api.enableApiLoad', true);
 const ENABLE_GRAPHQL_LOAD = getConfig('api.enableGraphqlLoad', true);
 const ENABLE_REST_LOAD = getConfig('api.enableRestLoad', true);
-const API_TRAFFIC_PERCENTAGE = getConfig('api.apiTrafficPercentage', 0.3);
 const GRAPHQL_SEARCH_PAGE_SIZE = getConfig('api.graphqlSearchPageSize', 5);
 
 // REST config
@@ -1226,8 +1259,8 @@ function realUserBrowsingSession(user, fallbackData) {
               addToCartChance += 0.2; // Interest match bonus
             }
             
-            // Support both simple and configurable products
-            const shouldAddToCart = Math.random() < Math.min(addToCartChance, 0.9) && 
+            // Support both simple and configurable products - use traffic distribution
+            const shouldAddToCart = Math.random() < Math.min(addToCartChance * TRAFFIC_ADD_TO_CART, 0.9) && 
                                    productId && 
                                    user.cart.length < MAX_PRODUCTS_IN_CART;
 
@@ -1356,12 +1389,92 @@ function realUserBrowsingSession(user, fallbackData) {
       }
     }
 
-    // PHASE 5: API interactions (simulating modern frontend behavior)
-    if (ENABLE_API_LOAD && Math.random() < API_TRAFFIC_PERCENTAGE) {
+    // PHASE 4.5: Additional Magento areas based on traffic distribution
+    
+    // Customer account access
+    if (Math.random() < TRAFFIC_CUSTOMER_ACCOUNT) {
+      sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
+      group('Customer Account Area', function () {
+        const accountResult = user.visitPage(`${BASE_URL}${CUSTOMER_ACCOUNT_PATH}`, 'customer_account');
+        if (accountResult && accountResult.success) {
+          check(accountResult.res, { 'Customer account status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+          // Could be login page if not logged in, or account dashboard if logged in
+        }
+      });
+    }
+
+    // Wishlist functionality
+    if (Math.random() < TRAFFIC_WISHLIST && user.discoveredProducts.length > 0) {
+      sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
+      group('Wishlist Interaction', function () {
+        const wishlistResult = user.visitPage(`${BASE_URL}${WISHLIST_PATH}`, 'wishlist');
+        if (wishlistResult && wishlistResult.success) {
+          check(wishlistResult.res, { 'Wishlist status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+        }
+      });
+    }
+
+    // Product comparison
+    if (Math.random() < TRAFFIC_PRODUCT_COMPARISON && user.discoveredProducts.length >= 2) {
+      sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
+      group('Product Comparison', function () {
+        const compareResult = user.visitPage(`${BASE_URL}${COMPARE_PRODUCTS_PATH}`, 'product_compare');
+        if (compareResult && compareResult.success) {
+          check(compareResult.res, { 'Product comparison status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+        }
+      });
+    }
+
+    // CMS/Content pages
+    if (Math.random() < TRAFFIC_CMS_PAGES) {
+      sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
+      const cmsPages = [ABOUT_US_PATH, CONTACT_US_PATH, SITEMAP_PATH];
+      const cmsPage = cmsPages[Math.floor(Math.random() * cmsPages.length)];
+      group('CMS Content Pages', function () {
+        const cmsResult = user.visitPage(`${BASE_URL}${cmsPage}`, 'cms_page');
+        if (cmsResult && cmsResult.success) {
+          check(cmsResult.res, { 'CMS page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+        }
+      });
+    }
+
+    // AJAX interactions (modern frontend behavior)
+    if (Math.random() < TRAFFIC_AJAX_REQUESTS && user.discoveredProducts.length > 0) {
+      sleep(Math.random() * 1 + 0.5); // Shorter think time for AJAX
+      group('AJAX Interactions', function () {
+        const product = user.discoveredProducts[Math.floor(Math.random() * user.discoveredProducts.length)];
+        const ajaxParams = {
+          ...user.params,
+          headers: {
+            ...user.params.headers,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+        };
+        
+        // Simulate AJAX add to wishlist or compare
+        const ajaxAction = Math.random();
+        if (ajaxAction < 0.5) {
+          // AJAX add to wishlist
+          const wishlistRes = http.post(`${BASE_URL}${AJAX_WISHLIST_PATH}`, { product: '123' }, ajaxParams);
+          check(wishlistRes, { 'AJAX wishlist status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+        } else {
+          // AJAX add to compare
+          const compareRes = http.post(`${BASE_URL}${AJAX_COMPARE_ADD_PATH}`, { product: '123' }, ajaxParams);
+          check(compareRes, { 'AJAX compare status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+        }
+      });
+    }
+
+    // PHASE 5: API interactions based on traffic distribution
+    const shouldMakeGraphQL = ENABLE_GRAPHQL_LOAD && Math.random() < TRAFFIC_GRAPHQL;
+    const shouldMakeREST = ENABLE_REST_LOAD && Math.random() < TRAFFIC_REST_API;
+    
+    if (shouldMakeGraphQL || shouldMakeREST) {
       sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
       
       group('API Interactions', function () {
-        if (ENABLE_GRAPHQL_LOAD) {
+        if (shouldMakeGraphQL) {
           // Enhanced GraphQL operations based on user context
           const apiAction = Math.random();
           
@@ -1417,7 +1530,7 @@ function realUserBrowsingSession(user, fallbackData) {
           }
         }
         
-        if (ENABLE_REST_LOAD) {
+        if (shouldMakeREST) {
           // Enhanced REST API operations
           const restAction = Math.random();
           
@@ -1448,8 +1561,8 @@ function realUserBrowsingSession(user, fallbackData) {
       });
     }
 
-    // PHASE 6: Reduced search activity to focus on catalog browsing
-    if (Math.random() < 0.1 && fallbackData.searchTerms && fallbackData.searchTerms.length > 0) {
+    // PHASE 6: Search activity based on traffic distribution
+    if (Math.random() < TRAFFIC_SEARCH_RESULTS && fallbackData.searchTerms && fallbackData.searchTerms.length > 0) {
       sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
       
       group('Perform Search', function () {
