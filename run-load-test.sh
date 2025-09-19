@@ -128,20 +128,20 @@ show_usage() {
     echo ""
     echo "Parameters:"
     echo "  virtual-users     Number of concurrent users (optional, default: 500)"
-    echo "  duration-seconds  Test duration in seconds (optional, default: 300)"
+    echo "  duration-seconds  Test duration in seconds (optional, default: 600)"
     echo "  magento-website-url  Target Magento website URL (required)"
     echo ""
     echo "Examples:"
-    echo "  $0 https://your-magento-site.com                    # Default: 500 users, 300s"
+    echo "  $0 https://your-magento-site.com                    # Default: 500 users, 600s (10m)"
     echo "  $0 50 60 https://your-magento-site.com             # Custom: 50 users, 60s"
-    echo "  $0 100 180 https://staging.your-site.com           # Custom: 100 users, 180s"
-    echo "  $0 10 30 https://4kxkvuyyo22dm.dummycachetest.com  # Light: 10 users, 30s"
+    echo "  $0 100 300 https://staging.your-site.com           # Custom: 100 users, 300s (5m)"
+    echo "  $0 10 60 https://4kxkvuyyo22dm.dummycachetest.com  # Light: 10 users, 60s"
     echo ""
     echo "Common scenarios:"
-    echo "  Light load:    $0 10 30 <url>     # 10 users, 30 seconds"
-    echo "  Medium load:   $0 50 120 <url>    # 50 users, 2 minutes"
-    echo "  Heavy load:    $0 200 300 <url>   # 200 users, 5 minutes"
-    echo "  Stress test:   $0 500 600 <url>   # 500 users, 10 minutes"
+    echo "  Light load:    $0 10 60 <url>     # 10 users, 1 minute"
+    echo "  Medium load:   $0 100 300 <url>   # 100 users, 5 minutes"
+    echo "  Heavy load:    $0 300 600 <url>   # 300 users, 10 minutes"
+    echo "  Stress test:   $0 500 900 <url>   # 500 users, 15 minutes"
     echo ""
     echo "The script will:"
     echo "  • Automatically install k6 if needed"
@@ -172,7 +172,7 @@ parse_arguments() {
     if [ $# -eq 1 ]; then
         # Format: ./script.sh <url>
         VIRTUAL_USERS=500
-        DURATION_SECONDS=300
+        DURATION_SECONDS=600        # 10 minutes total (3m ramp-up + 5m sustained + 2m ramp-down)
         MAGENTO_URL=$1
     elif [ $# -eq 3 ]; then
         # Format: ./script.sh <users> <duration> <url>
@@ -203,15 +203,15 @@ parse_arguments() {
         exit 1
     fi
     
-    # Calculate durations for k6 stages
-    RAMP_UP_DURATION=$((DURATION_SECONDS / 10))  # 10% for ramp up
-    SUSTAINED_DURATION=$((DURATION_SECONDS * 8 / 10))  # 80% sustained
-    RAMP_DOWN_DURATION=$((DURATION_SECONDS / 10))  # 10% for ramp down
+    # Calculate durations for k6 stages (3m ramp-up, 5m sustained, 2m ramp-down pattern)
+    RAMP_UP_DURATION=$((DURATION_SECONDS * 3 / 10))    # 30% for ramp up (3 minutes of 10)
+    SUSTAINED_DURATION=$((DURATION_SECONDS * 5 / 10))  # 50% sustained (5 minutes of 10)
+    RAMP_DOWN_DURATION=$((DURATION_SECONDS * 2 / 10))  # 20% for ramp down (2 minutes of 10)
     
-    # Ensure minimum durations
-    if [ $RAMP_UP_DURATION -lt 5 ]; then RAMP_UP_DURATION=5; fi
-    if [ $RAMP_DOWN_DURATION -lt 5 ]; then RAMP_DOWN_DURATION=5; fi
-    if [ $SUSTAINED_DURATION -lt 10 ]; then SUSTAINED_DURATION=10; fi
+    # Ensure minimum durations for short tests
+    if [ $RAMP_UP_DURATION -lt 10 ]; then RAMP_UP_DURATION=10; fi
+    if [ $RAMP_DOWN_DURATION -lt 10 ]; then RAMP_DOWN_DURATION=10; fi
+    if [ $SUSTAINED_DURATION -lt 15 ]; then SUSTAINED_DURATION=15; fi
 }
 
 # Function to create temporary config with custom parameters

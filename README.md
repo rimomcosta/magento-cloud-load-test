@@ -25,6 +25,7 @@ Node 3: 🔥          (Low load, only new sessions)
 
 **2. Realistic User Behavior:**
 - Our script simulates **real users** with 30-60+ second sessions
+- Default 10-minute test with 3m ramp-up allows proper session distribution
 - Real customers don't restart browsers between page visits
 - Cookie jar ensures session continuity (like real browsers)
 
@@ -84,16 +85,17 @@ chmod +x run-load-test.sh
 
 **Flexible Parameter Support:**
 ```bash
-# Default settings (500 users, 300 seconds)
+# Default settings (500 users, 600 seconds = 10 minutes)
 ./run-load-test.sh https://your-magento-site.com
 
 # Custom load (50 users, 60 seconds)
 ./run-load-test.sh 50 60 https://your-magento-site.com
 
 # Different scenarios
-./run-load-test.sh 10 30 https://staging.your-site.com     # Light load
-./run-load-test.sh 100 180 https://your-magento-site.com   # Medium load
-./run-load-test.sh 500 600 https://your-magento-site.com   # Heavy load
+./run-load-test.sh 10 60 https://staging.your-site.com     # Light load (1m)
+./run-load-test.sh 100 300 https://your-magento-site.com   # Medium load (5m)
+./run-load-test.sh 300 600 https://your-magento-site.com   # Heavy load (10m)
+./run-load-test.sh 500 900 https://your-magento-site.com   # Stress test (15m)
 ```
 
 The script will:
@@ -112,10 +114,12 @@ Create `load-test-config.yaml` to customize any aspect of the load test with exp
 loadTest:
   # Number of concurrent virtual users (simulated customers)
   # Light: 10-50, Medium: 100-200, Heavy: 300-500
-  virtualUsers: 100
+  virtualUsers: 500
   
-  # Time to maintain peak load (main testing period)
-  sustainedDuration: "3m"
+  # Load test timing (default: 10 minutes total)
+  rampUpDuration: "3m"      # 3 minutes gradual ramp-up
+  sustainedDuration: "5m"   # 5 minutes peak load
+  rampDownDuration: "2m"    # 2 minutes graceful ramp-down
 
 # User behavior simulation
 userBehavior:

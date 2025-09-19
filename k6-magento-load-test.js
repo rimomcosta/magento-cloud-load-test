@@ -150,9 +150,9 @@ function getConfig(path, defaultValue) {
 
 // Load test parameters
 const VIRTUAL_USERS = getConfig('loadTest.virtualUsers', 500);
-const RAMP_UP_DURATION = getConfig('loadTest.rampUpDuration', '60s');
+const RAMP_UP_DURATION = getConfig('loadTest.rampUpDuration', '3m');
 const SUSTAINED_DURATION = getConfig('loadTest.sustainedDuration', '5m');
-const RAMP_DOWN_DURATION = getConfig('loadTest.rampDownDuration', '60s');
+const RAMP_DOWN_DURATION = getConfig('loadTest.rampDownDuration', '2m');
 
 // HTTP timeout configuration
 const HTTP_TIMEOUT = getConfig('performance.httpTimeout', '60s');
