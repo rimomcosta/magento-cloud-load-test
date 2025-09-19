@@ -84,8 +84,8 @@ ecommerceFlow:
   maxProductsInCart: 5
   
   # Percentage of users who complete checkout (0.0-1.0)
-  # E-commerce average: 0.3-0.7 (30-70%)
-  checkoutCompletionRate: 0.7
+  # E-commerce average: 0.3-0.7 (30-70%) - increased for more cart/checkout traffic
+  checkoutCompletionRate: 0.8
   
   # Percentage of users who return to previous categories (0.0-1.0)
   # Simulates comparison shopping behavior
@@ -109,13 +109,13 @@ browsingPatterns:
   minBrowsingActions: 5
   
   # Probability of following different link types (0.0-1.0)
-  relatedProductFollowRate: 0.4    # Users often check related products
-  paginationFollowRate: 0.25       # Users browse through category pages
-  breadcrumbFollowRate: 0.2        # Users navigate back using breadcrumbs
+  relatedProductFollowRate: 0.6    # Users often check related products (increased)
+  paginationFollowRate: 0.4        # Users browse through category pages (increased)
+  breadcrumbFollowRate: 0.3        # Users navigate back using breadcrumbs (increased)
   
   # Interest-based navigation probabilities
-  interestMatchFollowRate: 0.7     # Follow links matching user interests
-  randomExplorationRate: 0.3       # Random exploration outside interests
+  interestMatchFollowRate: 0.8     # Follow links matching user interests (increased)
+  randomExplorationRate: 0.5       # Random exploration outside interests (increased)
   
   # Context-based behavior modifiers
   distractionRate: 0.15            # Chance to change browsing focus
@@ -164,8 +164,8 @@ api:
   enableRestLoad: true       # REST API calls (traditional integration)
   
   # Percentage of user sessions that include API calls (0.0-1.0)
-  # 0.3 = 30% of users make API calls (realistic for hybrid sites)
-  apiTrafficPercentage: 0.3
+  # 0.1 = 10% of users make API calls (reduce GraphQL dominance)
+  apiTrafficPercentage: 0.1
   
   # GraphQL query page size for product searches
   # Typical range: 5-20 products per query

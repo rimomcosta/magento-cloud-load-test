@@ -873,8 +873,11 @@ class RealUserSession {
       return { url: breadcrumbUrl, type: 'breadcrumb' };
     }
     
-    // Explore categories based on interests
-    if (this.discoveredCategories.length > 0 && Math.random() < 0.6) {
+    // Prioritize categories and products for catalog traffic
+    const catalogPriority = Math.random();
+    
+    // 70% chance to explore categories (increased for more catalog/category/view)
+    if (catalogPriority < 0.7 && this.discoveredCategories.length > 0) {
       // Prefer categories matching interests
       const interestedCategories = this.discoveredCategories.filter(cat =>
         this.interests.some(interest => cat.toLowerCase().includes(interest))
@@ -883,26 +886,18 @@ class RealUserSession {
       let categoryPool;
       if (interestedCategories.length > 0 && Math.random() < INTEREST_MATCH_FOLLOW_RATE) {
         categoryPool = interestedCategories; // Follow interests
-      } else if (Math.random() < RANDOM_EXPLORATION_RATE) {
-        categoryPool = this.discoveredCategories; // Random exploration
       } else {
-        return null; // User decides not to browse more categories
+        categoryPool = this.discoveredCategories; // Always explore categories
       }
       
       const categoryUrl = categoryPool[Math.floor(Math.random() * categoryPool.length)];
       return { url: categoryUrl, type: 'category' };
     }
     
-    // Explore products
+    // 30% chance to explore products (but still significant for catalog/product/view)
     if (this.discoveredProducts.length > 0) {
-      // Apply comparison shopping behavior
-      if (this.currentContext === 'product' && Math.random() < COMPARISON_SHOPPING_RATE) {
-        const productUrl = this.discoveredProducts[Math.floor(Math.random() * this.discoveredProducts.length)];
-        return { url: productUrl, type: 'product' };
-      } else if (this.currentContext !== 'product') {
-        const productUrl = this.discoveredProducts[Math.floor(Math.random() * this.discoveredProducts.length)];
-        return { url: productUrl, type: 'product' };
-      }
+      const productUrl = this.discoveredProducts[Math.floor(Math.random() * this.discoveredProducts.length)];
+      return { url: productUrl, type: 'product' };
     }
     
     return null; // No more URLs to explore
@@ -973,12 +968,13 @@ function realUserBrowsingSession(user, fallbackData) {
       // Get next URL based on realistic user behavior patterns
       let nextNavigation = user.getNextUrl();
       
-      // Fallback to predefined URLs if nothing discovered yet
-      if (!nextNavigation && browsingActions < 3) {
-        if (fallbackData.categories && fallbackData.categories.length > 0 && Math.random() < 0.7) {
+      // Fallback to predefined URLs if nothing discovered yet - prioritize categories and products
+      if (!nextNavigation) {
+        // Strongly favor categories and products over other content
+        if (fallbackData.categories && fallbackData.categories.length > 0 && Math.random() < 0.8) {
           const categoryUrl = fallbackData.categories[Math.floor(Math.random() * fallbackData.categories.length)];
           nextNavigation = { url: categoryUrl, type: 'category' };
-        } else if (fallbackData.products && fallbackData.products.length > 0) {
+        } else if (fallbackData.products && fallbackData.products.length > 0 && Math.random() < 0.9) {
           const productUrl = fallbackData.products[Math.floor(Math.random() * fallbackData.products.length)];
           nextNavigation = { url: productUrl, type: 'product' };
         }
@@ -1003,23 +999,38 @@ function realUserBrowsingSession(user, fallbackData) {
             
             // Real user decision: add to cart based on context and intent
             const { productId, requiresOptions } = extractProductInfo(result.res.body);
-            let addToCartChance = 0.3; // Base chance
+            let addToCartChance = 0.5; // Increased base chance for more cart activity
             
             // Increase chance based on context
-            if (actionType === 'related_product') addToCartChance += 0.2; // Related products are more appealing
-            if (user.shoppingIntent > 0.6) addToCartChance += 0.3; // High shopping intent
-            if (user.cart.length === 0) addToCartChance += 0.2; // First item bonus
+            if (actionType === 'related_product') addToCartChance += 0.3; // Related products are more appealing
+            if (user.shoppingIntent > 0.5) addToCartChance += 0.3; // Lower threshold for high intent
+            if (user.cart.length === 0) addToCartChance += 0.4; // Higher first item bonus
+            if (user.interests.some(interest => result.res.url.toLowerCase().includes(interest))) {
+              addToCartChance += 0.2; // Interest match bonus
+            }
             
-            const shouldAddToCart = Math.random() < addToCartChance && 
+            const shouldAddToCart = Math.random() < Math.min(addToCartChance, 0.9) && 
                                    productId && !requiresOptions && 
                                    user.cart.length < MAX_PRODUCTS_IN_CART;
 
             if (shouldAddToCart) {
-              sleep(Math.random() * 3 + 2); // Think time before adding to cart
+              sleep(Math.random() * 2 + 1); // Shorter think time for more cart activity
 
               group('Add Product to Cart', function () {
                 const addSuccess = user.addToCart(productId);
                 check({ status: addSuccess ? 200 : 400 }, { 'Add to cart successful': () => addSuccess });
+                
+                // Immediately check cart after adding (realistic user behavior)
+                if (addSuccess && Math.random() < 0.6) {
+                  sleep(Math.random() * 1 + 1);
+                  group('Check Cart After Adding', function () {
+                    const cartResult = user.visitPage(`${BASE_URL}${CART_PAGE_PATH}`, 'cart');
+                    if (cartResult && cartResult.success) {
+                      check(cartResult.res, { 'Cart check status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+                      cartTrend.add(cartResult.res.timings.duration);
+                    }
+                  });
+                }
               });
             }
           } else if (actionType === 'breadcrumb') {
@@ -1069,9 +1080,9 @@ function realUserBrowsingSession(user, fallbackData) {
       }
     }
 
-    // PHASE 4: Cart and checkout behavior (if user has items)
+    // PHASE 4: Cart and checkout behavior (prioritized for visibility)
     if (user.cart.length > 0) {
-      sleep(Math.random() * 3 + 2); // Think time before going to cart
+      sleep(Math.random() * 2 + 1); // Shorter think time for more cart activity
 
       group('Visit Shopping Cart', function () {
         const cartResult = user.visitPage(`${BASE_URL}${CART_PAGE_PATH}`, 'cart');
@@ -1081,15 +1092,26 @@ function realUserBrowsingSession(user, fallbackData) {
         }
       });
 
-      sleep(Math.random() * 4 + 3); // Think time in cart (longer)
+      sleep(Math.random() * 2 + 2); // Shorter think time in cart
 
-      // Real user checkout decision
+      // Real user checkout decision - increased rate for more checkout traffic
       if (Math.random() < CHECKOUT_COMPLETION_RATE) {
         group('Proceed to Checkout', function () {
           const checkoutResult = user.visitPage(`${BASE_URL}${CHECKOUT_PAGE_PATH}`, 'checkout');
           if (checkoutResult && checkoutResult.success) {
             check(checkoutResult.res, { 'Checkout page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
             checkoutTrend.add(checkoutResult.res.timings.duration);
+          }
+        });
+      }
+    } else {
+      // Even users without cart items sometimes visit cart (realistic behavior)
+      if (Math.random() < 0.2) {
+        group('Visit Empty Cart', function () {
+          const cartResult = user.visitPage(`${BASE_URL}${CART_PAGE_PATH}`, 'cart');
+          if (cartResult && cartResult.success) {
+            check(cartResult.res, { 'Empty cart status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+            cartTrend.add(cartResult.res.timings.duration);
           }
         });
       }
@@ -1119,8 +1141,8 @@ function realUserBrowsingSession(user, fallbackData) {
       });
     }
 
-    // PHASE 6: Sometimes do a search based on what user has seen
-    if (Math.random() < 0.3 && fallbackData.searchTerms && fallbackData.searchTerms.length > 0) {
+    // PHASE 6: Reduced search activity to focus on catalog browsing
+    if (Math.random() < 0.1 && fallbackData.searchTerms && fallbackData.searchTerms.length > 0) {
       sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
       
       group('Perform Search', function () {
