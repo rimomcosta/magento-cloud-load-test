@@ -120,13 +120,14 @@ sudo yum install https://github.com/grafana/k6/releases/download/v0.47.0/k6-0.47
 - **API Load**: GraphQL and REST API endpoints
 
 ### Advanced Features
+- **Customer Account Creation**: 10% of users create accounts with `load_test_user_` prefix
+- **Comprehensive Cookie Management**: Full session persistence like real browsers
 - **Configurable Product Support**: Handles size/color options automatically
-- **Enhanced Session Management**: Cookie tracking and session persistence
+- **Enhanced Session Management**: PHPSESSID, customer cookies, cart persistence
 - **Mobile User Simulation**: 40% mobile users with different behavior patterns
-- **Cart Management**: Add, modify, remove items, apply coupons
-- **Customer Account Areas**: Login, registration, account dashboard
-- **Wishlist & Comparison**: Product wishlist and comparison functionality
-- **Flexible API Control**: Adjust GraphQL/REST traffic from 5% to 50%+
+- **Advanced Cart Management**: Add, modify, remove items, apply coupons
+- **Logged-In User Flows**: Account dashboard, order history, address book
+- **Flexible Traffic Control**: Adjust any Magento area traffic via YAML config
 - **Cache Bypass**: 30% of requests bypass cache for New Relic visibility
 - **Error Handling**: Graceful handling of timeouts and server errors
 
@@ -213,6 +214,12 @@ Homepage → Browse Categories → View Products (no purchase)
 Homepage → Product → Add to Cart → Cart → Checkout (fast)
 ```
 
+**7. Customer Registration Journey (10%)**
+```
+Homepage → Registration Page → Create Account → Account Dashboard → 
+Order History → Browse Categories → Add to Cart → Enhanced Checkout
+```
+
 ### Threshold Monitoring
 The test monitors these performance criteria:
 - ✅ **Pass**: Response times within thresholds
@@ -267,6 +274,31 @@ browsingPatterns:
   maxBrowsingActions: 8
 ```
 
+### Customer Account Simulation
+
+**10% of users create accounts during load testing:**
+
+```yaml
+customerAccounts:
+  registrationRate: 0.1                    # 10% create accounts
+  registeredUserCheckoutRate: 0.5          # 50% complete checkout
+  userPrefix: "load_test_user_"             # Easy admin identification
+  accountDashboardVisitRate: 0.8           # 80% visit dashboard
+  orderHistoryCheckRate: 0.6               # 60% check order history
+  addressBookAccessRate: 0.4               # 40% access address book
+```
+
+**Generated Customer Data:**
+- **Username**: `load_test_user_1732024567890_1234`
+- **Email**: `load_test_user_1732024567890_1234@loadtest.example.com`
+- **Name**: `LoadTest User1234`
+- **Password**: `LoadTest123!`
+
+**Admin Panel Cleanup:**
+- Filter customers by email: `*@loadtest.example.com`
+- Filter by username: `load_test_user_*`
+- Filter by name: `LoadTest`
+
 ### Quick Traffic Adjustments
 
 **Want to test specific areas? Just adjust these values:**
@@ -275,6 +307,7 @@ browsingPatterns:
 - **More Categories**: `browsingPatterns.paginationFollowRate: 0.8` (80% category browsing)
 - **More Cart Activity**: `ecommerceFlow.checkoutCompletionRate: 0.9` (90% checkout)
 - **More Products**: `browsingPatterns.relatedProductFollowRate: 0.9` (90% product following)
+- **More Customer Accounts**: `customerAccounts.registrationRate: 0.2` (20% create accounts)
 - **Shorter Sessions**: `browsingPatterns.maxBrowsingActions: 5` (quick sessions)
 - **Longer Sessions**: `browsingPatterns.maxBrowsingActions: 25` (extensive browsing)
 
