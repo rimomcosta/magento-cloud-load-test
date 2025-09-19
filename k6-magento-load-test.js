@@ -470,20 +470,79 @@ function extractFormKey(html) {
   return formKeyMatch ? formKeyMatch[1] : null;
 }
 
-// Helper function to extract product ID and whether options are required
+// Enhanced product info extraction with configurable product support
 function extractProductInfo(html) {
   if (!html || typeof html !== 'string') {
     return {
       productId: null,
       requiresOptions: false,
+      availableOptions: {}
     };
   }
+  
   const idMatch = html.match(/product_id['"]\s*:\s*['"]?(\d+)['"]?/);
-  const requiresOptions = /super_attribute|configurable|bundle-options|swatch-opt/.test(html);
+  const productId = idMatch ? idMatch[1] : null;
+  
+  // Enhanced configurable product detection
+  const isConfigurable = /data-role="swatch-options"|super_attribute|configurable-data|swatch-opt/.test(html);
+  
+  if (isConfigurable) {
+    const availableOptions = extractSwatchOptions(html);
+    return {
+      productId,
+      requiresOptions: true,
+      availableOptions
+    };
+  }
+  
   return {
-    productId: idMatch ? idMatch[1] : null,
-    requiresOptions,
+    productId,
+    requiresOptions: false,
+    availableOptions: {}
   };
+}
+
+// Extract swatch options for configurable products
+function extractSwatchOptions(html) {
+  const options = {};
+  
+  try {
+    // Extract size options
+    const sizeMatches = html.match(/attribute_id['"]\s*:\s*['"]?(\d+)['"]?.*?attribute_code['"]\s*:\s*['"]size['"].*?options['"]\s*:\s*(\{[^}]+\})/s);
+    if (sizeMatches) {
+      const sizeOptionsText = sizeMatches[2];
+      const sizeIds = sizeOptionsText.match(/['"](\d+)['"]/g);
+      if (sizeIds && sizeIds.length > 0) {
+        options.size = sizeIds[Math.floor(Math.random() * sizeIds.length)].replace(/['"]/g, '');
+      }
+    }
+    
+    // Extract color options
+    const colorMatches = html.match(/attribute_id['"]\s*:\s*['"]?(\d+)['"]?.*?attribute_code['"]\s*:\s*['"]color['"].*?options['"]\s*:\s*(\{[^}]+\})/s);
+    if (colorMatches) {
+      const colorOptionsText = colorMatches[2];
+      const colorIds = colorOptionsText.match(/['"](\d+)['"]/g);
+      if (colorIds && colorIds.length > 0) {
+        options.color = colorIds[Math.floor(Math.random() * colorIds.length)].replace(/['"]/g, '');
+      }
+    }
+    
+    // Fallback: extract any super_attribute options
+    const superAttributeMatches = html.match(/super_attribute\[(\d+)\]/g);
+    if (superAttributeMatches) {
+      superAttributeMatches.forEach(match => {
+        const attrId = match.match(/\d+/)[0];
+        // Generate random option ID (common range 1-20)
+        options[`super_attribute[${attrId}]`] = Math.floor(Math.random() * 20) + 1;
+      });
+    }
+  } catch (e) {
+    // If extraction fails, return common default options
+    options['super_attribute[92]'] = Math.floor(Math.random() * 5) + 1; // Size
+    options['super_attribute[93]'] = Math.floor(Math.random() * 10) + 1; // Color
+  }
+  
+  return options;
 }
 
 // Helper function to make HTTP request with retry logic
@@ -606,7 +665,7 @@ function getHttpParams(bypassCache = false) {
   return baseParams;
 }
 
-// Real User Session - maintains state and discovered links throughout the session
+// Enhanced Real User Session with proper session management
 class RealUserSession {
   constructor(params) {
     this.params = params;
@@ -622,8 +681,49 @@ class RealUserSession {
     this.shoppingIntent = Math.random(); // 0-1, higher = more likely to buy
     this.sessionStartTime = Date.now();
     this.formKey = null;
-    this.sessionCookies = null;
+    this.cookieJar = http.cookieJar(); // Proper cookie management
+    this.sessionId = null;
+    this.customerId = null;
+    this.isLoggedIn = false;
+    this.isMobileUser = Math.random() < 0.4; // 40% mobile users
     this.currentContext = 'homepage'; // Track where user is in their journey
+    this.cartId = null; // For GraphQL cart operations
+    
+    // Mobile users have different behavior
+    if (this.isMobileUser) {
+      this.params.headers['User-Agent'] = this.getMobileUserAgent();
+      this.maxBrowsingActions = Math.floor(MAX_BROWSING_ACTIONS * 0.7); // Shorter sessions
+      this.thinkTimeMultiplier = 0.8; // Faster browsing
+    } else {
+      this.maxBrowsingActions = MAX_BROWSING_ACTIONS;
+      this.thinkTimeMultiplier = 1.0;
+    }
+  }
+
+  // Get mobile user agent
+  getMobileUserAgent() {
+    const mobileAgents = [
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      'Mozilla/5.0 (Android 14; Mobile; rv:121.0) Gecko/121.0 Firefox/121.0',
+      'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
+    ];
+    return mobileAgents[Math.floor(Math.random() * mobileAgents.length)];
+  }
+
+  // Update session cookies from response
+  updateSessionCookies(response) {
+    if (response.headers && response.headers['Set-Cookie']) {
+      const cookies = response.headers['Set-Cookie'];
+      if (Array.isArray(cookies)) {
+        cookies.forEach(cookie => {
+          if (cookie.includes('PHPSESSID')) {
+            this.sessionId = cookie.match(/PHPSESSID=([^;]+)/)?.[1];
+          }
+        });
+      } else if (typeof cookies === 'string' && cookies.includes('PHPSESSID')) {
+        this.sessionId = cookies.match(/PHPSESSID=([^;]+)/)?.[1];
+      }
+    }
   }
 
   // Generate realistic user interests/preferences
@@ -903,8 +1003,8 @@ class RealUserSession {
     return null; // No more URLs to explore
   }
 
-  // Add product to cart like a real user
-  addToCart(productId) {
+  // Enhanced add to cart with configurable product support
+  addToCart(productId, availableOptions = {}) {
     if (!this.formKey || !productId) return false;
     
     const addToCartParams = {
@@ -921,14 +1021,131 @@ class RealUserSession {
       'product': productId,
       'form_key': this.formKey,
       'qty': qty,
+      ...availableOptions // Include selected options for configurable products
     };
 
     const addToCartRes = http.post(`${BASE_URL}${ADD_TO_CART_PATH}`, addToCartData, addToCartParams);
     const success = addToCartRes.status >= 200 && addToCartRes.status < 400;
     
     if (success) {
-      this.cart.push({ productId, qty });
+      this.cart.push({ productId, qty, options: availableOptions });
       addToCartTrend.add(addToCartRes.timings.duration);
+      this.updateSessionCookies(addToCartRes);
+    }
+    
+    return success;
+  }
+
+  // Enhanced cart management with modifications
+  modifyCart() {
+    if (this.cart.length === 0) return false;
+    
+    const action = Math.random();
+    
+    if (action < 0.4) {
+      // Update quantities (40% chance)
+      return this.updateCartQuantities();
+    } else if (action < 0.6) {
+      // Remove items (20% chance)
+      return this.removeCartItems();
+    } else if (action < 0.8) {
+      // Apply coupon (20% chance)
+      return this.applyCouponCode();
+    }
+    
+    return false;
+  }
+
+  // Update cart quantities
+  updateCartQuantities() {
+    if (this.cart.length === 0) return false;
+    
+    // Simulate updating quantity for a random item
+    const cartItem = this.cart[Math.floor(Math.random() * this.cart.length)];
+    const newQty = Math.floor(Math.random() * 3) + 1;
+    
+    const updateParams = {
+      ...this.params,
+      headers: {
+        ...this.params.headers,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    };
+
+    const updateData = {
+      'form_key': this.formKey,
+      [`cart[${cartItem.productId}][qty]`]: newQty,
+      'update_cart_action': 'update_qty'
+    };
+
+    const updateRes = http.post(`${BASE_URL}${CART_PAGE_PATH}`, updateData, updateParams);
+    const success = updateRes.status >= 200 && updateRes.status < 400;
+    
+    if (success) {
+      cartItem.qty = newQty;
+      cartTrend.add(updateRes.timings.duration);
+    }
+    
+    return success;
+  }
+
+  // Remove items from cart
+  removeCartItems() {
+    if (this.cart.length === 0) return false;
+    
+    // Remove a random item
+    const itemIndex = Math.floor(Math.random() * this.cart.length);
+    const cartItem = this.cart[itemIndex];
+    
+    const removeParams = {
+      ...this.params,
+      headers: {
+        ...this.params.headers,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    };
+
+    const removeData = {
+      'form_key': this.formKey,
+      [`cart[${cartItem.productId}][qty]`]: 0,
+      'update_cart_action': 'update_qty'
+    };
+
+    const removeRes = http.post(`${BASE_URL}${CART_PAGE_PATH}`, removeData, removeParams);
+    const success = removeRes.status >= 200 && removeRes.status < 400;
+    
+    if (success) {
+      this.cart.splice(itemIndex, 1);
+      cartTrend.add(removeRes.timings.duration);
+    }
+    
+    return success;
+  }
+
+  // Apply coupon code
+  applyCouponCode() {
+    const commonCoupons = ['SAVE10', 'WELCOME', 'FIRST20', 'DISCOUNT', 'SALE'];
+    const couponCode = commonCoupons[Math.floor(Math.random() * commonCoupons.length)];
+    
+    const couponParams = {
+      ...this.params,
+      headers: {
+        ...this.params.headers,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    };
+
+    const couponData = {
+      'form_key': this.formKey,
+      'coupon_code': couponCode,
+      'apply_coupon': 'Apply Coupon'
+    };
+
+    const couponRes = http.post(`${BASE_URL}${CART_PAGE_PATH}`, couponData, couponParams);
+    const success = couponRes.status >= 200 && couponRes.status < 400;
+    
+    if (success) {
+      cartTrend.add(couponRes.timings.duration);
     }
     
     return success;
@@ -997,9 +1214,9 @@ function realUserBrowsingSession(user, fallbackData) {
             check(result.res, { 'Product page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
             productPageTrend.add(result.res.timings.duration);
             
-            // Real user decision: add to cart based on context and intent
-            const { productId, requiresOptions } = extractProductInfo(result.res.body);
-            let addToCartChance = 0.5; // Increased base chance for more cart activity
+            // Enhanced product decision with configurable product support
+            const { productId, requiresOptions, availableOptions } = extractProductInfo(result.res.body);
+            let addToCartChance = 0.5; // Base chance for more cart activity
             
             // Increase chance based on context
             if (actionType === 'related_product') addToCartChance += 0.3; // Related products are more appealing
@@ -1009,16 +1226,25 @@ function realUserBrowsingSession(user, fallbackData) {
               addToCartChance += 0.2; // Interest match bonus
             }
             
+            // Support both simple and configurable products
             const shouldAddToCart = Math.random() < Math.min(addToCartChance, 0.9) && 
-                                   productId && !requiresOptions && 
+                                   productId && 
                                    user.cart.length < MAX_PRODUCTS_IN_CART;
 
             if (shouldAddToCart) {
-              sleep(Math.random() * 2 + 1); // Shorter think time for more cart activity
+              sleep(Math.random() * 2 + 1); // Think time for product selection
 
               group('Add Product to Cart', function () {
-                const addSuccess = user.addToCart(productId);
-                check({ status: addSuccess ? 200 : 400 }, { 'Add to cart successful': () => addSuccess });
+                let addSuccess;
+                if (requiresOptions && Object.keys(availableOptions).length > 0) {
+                  // Configurable product - use extracted options
+                  addSuccess = user.addToCart(productId, availableOptions);
+                  check({ status: addSuccess ? 200 : 400 }, { 'Add configurable product to cart': () => addSuccess });
+                } else {
+                  // Simple product
+                  addSuccess = user.addToCart(productId);
+                  check({ status: addSuccess ? 200 : 400 }, { 'Add simple product to cart': () => addSuccess });
+                }
                 
                 // Immediately check cart after adding (realistic user behavior)
                 if (addSuccess && Math.random() < 0.6) {
@@ -1028,6 +1254,7 @@ function realUserBrowsingSession(user, fallbackData) {
                     if (cartResult && cartResult.success) {
                       check(cartResult.res, { 'Cart check status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
                       cartTrend.add(cartResult.res.timings.duration);
+                      user.updateSessionCookies(cartResult.res);
                     }
                   });
                 }
@@ -1080,27 +1307,38 @@ function realUserBrowsingSession(user, fallbackData) {
       }
     }
 
-    // PHASE 4: Cart and checkout behavior (prioritized for visibility)
+    // PHASE 4: Enhanced cart and checkout behavior
     if (user.cart.length > 0) {
-      sleep(Math.random() * 2 + 1); // Shorter think time for more cart activity
+      sleep(Math.random() * 2 + 1); // Think time before cart
 
       group('Visit Shopping Cart', function () {
         const cartResult = user.visitPage(`${BASE_URL}${CART_PAGE_PATH}`, 'cart');
         if (cartResult && cartResult.success) {
           check(cartResult.res, { 'Cart page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
           cartTrend.add(cartResult.res.timings.duration);
+          user.updateSessionCookies(cartResult.res);
         }
       });
 
-      sleep(Math.random() * 2 + 2); // Shorter think time in cart
+      // Realistic cart modifications (users often change their minds)
+      if (Math.random() < 0.4) {
+        sleep(Math.random() * 2 + 1);
+        group('Modify Cart Contents', function () {
+          const modifySuccess = user.modifyCart();
+          check({ status: modifySuccess ? 200 : 400 }, { 'Cart modification successful': () => modifySuccess });
+        });
+      }
 
-      // Real user checkout decision - increased rate for more checkout traffic
+      sleep(Math.random() * 2 + 2); // Think time in cart
+
+      // Enhanced checkout decision
       if (Math.random() < CHECKOUT_COMPLETION_RATE) {
         group('Proceed to Checkout', function () {
           const checkoutResult = user.visitPage(`${BASE_URL}${CHECKOUT_PAGE_PATH}`, 'checkout');
           if (checkoutResult && checkoutResult.success) {
             check(checkoutResult.res, { 'Checkout page status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
             checkoutTrend.add(checkoutResult.res.timings.duration);
+            user.updateSessionCookies(checkoutResult.res);
           }
         });
       }
@@ -1112,6 +1350,7 @@ function realUserBrowsingSession(user, fallbackData) {
           if (cartResult && cartResult.success) {
             check(cartResult.res, { 'Empty cart status is 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
             cartTrend.add(cartResult.res.timings.duration);
+            user.updateSessionCookies(cartResult.res);
           }
         });
       }
@@ -1122,21 +1361,89 @@ function realUserBrowsingSession(user, fallbackData) {
       sleep(Math.random() * (MAX_THINK_TIME - MIN_THINK_TIME) + MIN_THINK_TIME);
       
       group('API Interactions', function () {
-        if (ENABLE_GRAPHQL_LOAD && user.interests.length > 0) {
-          // Search for products matching user interests
-          const searchTerm = user.interests[Math.floor(Math.random() * user.interests.length)];
-          const q = `query ($search: String!){ products(search: $search, pageSize: ${GRAPHQL_SEARCH_PAGE_SIZE}){ items { sku name } } }`;
-          const gRes = graphqlQuery(q, { search: searchTerm });
-          check(gRes, { 'GraphQL search 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
-          graphqlTrend.add(gRes.timings.duration);
+        if (ENABLE_GRAPHQL_LOAD) {
+          // Enhanced GraphQL operations based on user context
+          const apiAction = Math.random();
+          
+          if (apiAction < 0.4 && user.interests.length > 0) {
+            // Product search with filters
+            const searchTerm = user.interests[Math.floor(Math.random() * user.interests.length)];
+            const q = `query($search: String!, $pageSize: Int!) {
+              products(search: $search, pageSize: $pageSize) {
+                items { 
+                  sku 
+                  name 
+                  price_range { 
+                    minimum_price { 
+                      final_price { value currency } 
+                    } 
+                  }
+                }
+                aggregations { 
+                  attribute_code 
+                  options { label value } 
+                }
+              }
+            }`;
+            const gRes = graphqlQuery(q, { search: searchTerm, pageSize: GRAPHQL_SEARCH_PAGE_SIZE });
+            check(gRes, { 'GraphQL product search 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+            graphqlTrend.add(gRes.timings.duration);
+          } else if (apiAction < 0.7 && user.cart.length > 0) {
+            // Cart operations via GraphQL
+            const cartQuery = `query($cartId: String!) {
+              cart(cart_id: $cartId) {
+                total_quantity
+                items { 
+                  quantity 
+                  product { sku name }
+                }
+              }
+            }`;
+            const cartId = user.cartId || 'guest_cart';
+            const gRes = graphqlQuery(cartQuery, { cartId });
+            check(gRes, { 'GraphQL cart query 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+            graphqlTrend.add(gRes.timings.duration);
+          } else {
+            // Category/CMS content via GraphQL
+            const cmsQuery = `query {
+              cmsBlocks(identifiers: ["home-content"]) {
+                items { title content }
+              }
+              storeConfig { store_name }
+            }`;
+            const gRes = graphqlQuery(cmsQuery, {});
+            check(gRes, { 'GraphQL CMS query 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+            graphqlTrend.add(gRes.timings.duration);
+          }
         }
         
         if (ENABLE_REST_LOAD) {
-          const storeRes = restGet('/rest/default/V1/store/storeViews');
-          if (storeRes.status !== 401 && storeRes.status !== 403) {
-            check(storeRes, { 'REST store views 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+          // Enhanced REST API operations
+          const restAction = Math.random();
+          
+          if (restAction < 0.5) {
+            // Store configuration
+            const storeRes = restGet('/rest/default/V1/store/storeViews');
+            if (storeRes.status !== 401 && storeRes.status !== 403) {
+              check(storeRes, { 'REST store views 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+            }
+            restTrend.add(storeRes.timings.duration);
+          } else if (restAction < 0.8 && user.cart.length > 0) {
+            // Guest cart operations
+            const cartRes = restPost('/rest/default/V1/guest-carts', {});
+            if (cartRes.status >= 200 && cartRes.status < 400) {
+              check(cartRes, { 'REST guest cart creation 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+              user.cartId = cartRes.body.replace(/"/g, '');
+            }
+            restTrend.add(cartRes.timings.duration);
+          } else {
+            // Directory services
+            const dirRes = restGet('/rest/default/V1/directory/countries');
+            if (dirRes.status !== 401 && dirRes.status !== 403) {
+              check(dirRes, { 'REST directory 2xx/3xx': (r) => r.status >= 200 && r.status < 400 });
+            }
+            restTrend.add(dirRes.timings.duration);
           }
-          restTrend.add(storeRes.timings.duration);
         }
       });
     }

@@ -270,10 +270,10 @@ browsingPatterns:
   impulseBuyingRate: 0.25
 
 api:
-  enableApiLoad: false
-  enableGraphqlLoad: false
-  enableRestLoad: false
-  apiTrafficPercentage: 0.0
+  enableApiLoad: true
+  enableGraphqlLoad: true
+  enableRestLoad: true
+  apiTrafficPercentage: 0.05
 
 cache:
   cacheBypassPercentage: 0.3

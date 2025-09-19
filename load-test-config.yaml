@@ -48,11 +48,29 @@ browsingPatterns:
   comparisonShoppingRate: 0.6
   impulseBuyingRate: 0.3
 
+# =============================================================================
+# ENHANCED MAGENTO FEATURES
+# =============================================================================
+magentoFeatures:
+  # Support for configurable products (size, color, etc.)
+  enableConfigurableProducts: true
+  
+  # Cart modification behaviors
+  cartModificationRate: 0.4        # Chance users modify cart contents
+  couponUsageRate: 0.2            # Chance users try coupon codes
+  quantityChangeRate: 0.4         # Chance users change quantities
+  itemRemovalRate: 0.2            # Chance users remove items
+  
+  # Mobile vs Desktop simulation
+  mobileUserPercentage: 0.4       # 40% mobile users
+  mobileBrowsingSpeedMultiplier: 0.8  # Mobile users browse faster
+  mobileSessionLengthMultiplier: 0.7  # Mobile sessions are shorter
+
 api:
-  enableApiLoad: false
-  enableGraphqlLoad: false
-  enableRestLoad: false
-  apiTrafficPercentage: 0.0
+  enableApiLoad: true
+  enableGraphqlLoad: true
+  enableRestLoad: true
+  apiTrafficPercentage: 0.05   # 5% of load for realistic API testing
 
 cache:
   cacheBypassPercentage: 0.3
