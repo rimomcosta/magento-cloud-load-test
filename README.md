@@ -8,12 +8,20 @@ A comprehensive load testing solution for Magento websites using k6, designed to
 
 ```bash
 chmod +x run-load-test.sh
-./run-load-test.sh
+./run-load-test.sh https://your-magento-site.com
+```
+
+**Examples:**
+```bash
+./run-load-test.sh https://your-magento-site.com
+./run-load-test.sh https://staging.your-site.com
+./run-load-test.sh https://4kxkvuyyo22dm.dummycachetest.com
 ```
 
 The script will:
 - ✅ Automatically detect your OS (macOS/Linux)
 - ✅ Install k6 if not present (with your permission)
+- ✅ Update the load test script with your website URL
 - ✅ Run a comprehensive load test
 - ✅ Provide detailed performance metrics
 
@@ -126,6 +134,12 @@ The test monitors these performance criteria:
 ## 🔧 Customization
 
 ### Changing Target Website
+**Method 1: Command Line (Recommended)**
+```bash
+./run-load-test.sh https://your-magento-site.com
+```
+
+**Method 2: Manual Edit**
 Update the `BASE_URL` in `k6-magento-load-test.js`:
 ```javascript
 const BASE_URL = 'https://your-magento-site.com';

@@ -116,14 +116,59 @@ install_k6() {
     esac
 }
 
+# Function to show usage
+show_usage() {
+    echo -e "${BLUE}"
+    echo "🚀 Magento Load Test Runner"
+    echo "=========================="
+    echo -e "${NC}"
+    echo ""
+    echo "Usage: $0 <magento-website-url>"
+    echo ""
+    echo "Examples:"
+    echo "  $0 https://your-magento-site.com"
+    echo "  $0 https://staging.your-site.com"
+    echo "  $0 https://4kxkvuyyo22dm.dummycachetest.com"
+    echo ""
+    echo "The script will:"
+    echo "  • Automatically install k6 if needed"
+    echo "  • Update the load test script with your website URL"
+    echo "  • Run a comprehensive load test"
+    echo ""
+}
+
+# Function to validate URL
+validate_url() {
+    local url=$1
+    if [[ ! $url =~ ^https?:// ]]; then
+        print_error "Invalid URL format. Please include http:// or https://"
+        echo "Example: https://your-magento-site.com"
+        return 1
+    fi
+    return 0
+}
+
 # Main script
 main() {
+    # Check if URL argument is provided
+    if [ $# -eq 0 ]; then
+        show_usage
+        exit 1
+    fi
+    
+    local MAGENTO_URL=$1
+    
+    # Validate URL format
+    if ! validate_url "$MAGENTO_URL"; then
+        exit 1
+    fi
+    
     echo -e "${BLUE}"
     echo "🚀 Magento Load Test Runner"
     echo "=========================="
     echo -e "${NC}"
     
-    print_status "Website: https://4kxkvuyyo22dm.dummycachetest.com"
+    print_status "Website: $MAGENTO_URL"
     print_status "Test Configuration: 500 VUs, 5-minute sustained load"
     print_status "Cache Bypass: 30% of requests (for New Relic visibility)"
     echo ""
@@ -154,11 +199,31 @@ main() {
         exit 1
     fi
     
+    # Update the BASE_URL in the k6 script
+    print_status "Updating load test script with website URL..."
+    
+    # Create a temporary script with the updated URL
+    local TEMP_SCRIPT=$(mktemp)
+    
+    # Replace the BASE_URL in the script
+    sed "s|const BASE_URL = 'https://4kxkvuyyo22dm.dummycachetest.com';|const BASE_URL = '$MAGENTO_URL';|g" k6-magento-load-test.js > "$TEMP_SCRIPT"
+    
+    if [ $? -eq 0 ]; then
+        print_success "Load test script updated with $MAGENTO_URL"
+    else
+        print_error "Failed to update load test script"
+        rm -f "$TEMP_SCRIPT"
+        exit 1
+    fi
+    
     print_success "Starting load test..."
     echo ""
     
-    # Run the load test
-    k6 run k6-magento-load-test.js
+    # Run the load test with the temporary script
+    k6 run "$TEMP_SCRIPT"
+    
+    # Clean up temporary file
+    rm -f "$TEMP_SCRIPT"
     
     echo ""
     print_success "Load test completed!"
